@@ -1,173 +1,91 @@
+from flask import Flask, request, jsonify, send_from_directory
 from pymongo import MongoClient
-from dotenv import load_dotenv
 import os
-
+from dotenv import load_dotenv
+from bson import ObjectId  # To handle ObjectId for deletion
 
 load_dotenv()
-DBuser = os.getenv('DBuser')
-DBpassword = os.getenv('DBpassword')
-DBname = os.getenv('DBname')
-DBip = os.getenv('DBip')
-DBcollectionName = os.getenv('CollectionName')
 
-class Mongo():
+app = Flask(__name__, static_folder=".", static_url_path="")
 
-    def __init__(self,ip,DBname,CollectionName):
-        self.ip = ip
-        self.DBname = DBname
+client = MongoClient(f"mongodb://{os.getenv('DBuser')}:{os.getenv('DBpassword')}@{os.getenv('DBip')}:27017/")
+db = client[os.getenv('DBname')]
+collection = db[os.getenv('CollectionName')]
 
-        # MongoDB connection setup
-        #mongo_uri = f"mongodb://{encoded_username}:{encoded_password}@127.0.0.1:27017/"
+@app.route('/')
+def index():
+    return send_from_directory('.', 'index3.html')
 
-        client = MongoClient(f"mongodb://{os.getenv('DBuser')}:{os.getenv('DBpassword')}@{ip}:27017/")  # Adjust as needed
-        self.db = client[DBname]  # Replace with your DB name
-        self.collection = self.db[CollectionName]  # Replace with your collection name
-        
+@app.route('/search', methods=['GET'])
+def search_certificate():
+    dns = request.args.get('dns')
+    result = collection.find_one({"dns": dns}, {"_id": 0})
+    return jsonify(result) if result else jsonify({"error": "Not found"})
 
+@app.route('/add', methods=['POST'])
+def add_certificate():
+    data = request.json
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    # Add missing default values for some fields if not provided
+    data.setdefault("fqdn", "")
+    data.setdefault("dns", "")
+    data.setdefault("ip", "")
+    data.setdefault("local", "")
+    data.setdefault("method", "")
+    data.setdefault("pickup-ID", "")
+    data.setdefault("state", "")
+    data.setdefault("country", "IL")  # Default country if not provided
 
-    def fetch_certificate(self,dns):
-        """Fetch certificate details by dns."""
-        cert_data = self.collection.find_one({"dns": dns})
-        if cert_data:
-            print(f"Certificate details fetched for {dns}")
-            return cert_data
-        else:
-            print(f"No certificate found for {dns}")
-            return None
+    result = collection.insert_one(data)
+    return jsonify({"message": "Certificate added", "id": str(result.inserted_id)})
 
-    def write_certificate(self,id,name,fqdn,dns,ip,local,method=None,key=None,crt=None,chain=None):
-        """Add a new certificate to the database."""
-        if not (id and name and fqdn and dns and ip and local):
-            print("All fields are required to add a new certificate.")
-            return
+@app.route('/update', methods=['POST'])
+def update_certificate():
+    data = request.json
+    fqdn = data.pop("fqdn", None)
+    cert_id = data.pop("id", None)
 
-        new_cert = {
-                "id": id,
-                "name": name,
-                "fqdn": fqdn,
-                "dns": dns,
-                "ip": ip,
-                "local": local,
-                "key" : key,
-                "crt" : crt,
-                "chain" : chain,
-                "method": method
-            }
-        self.collection.insert_one(new_cert)
-        print(f"New certificate added for {fqdn}")
-
-    def edit_certificate(self,fqdn,id=None,name=None,dns=None,ip=None,local=None,method=None,key=None,crt=None,chain=None):
-        """Edit an existing certificate by updating specific fields."""
-        if not fqdn:
-            print("FQDN is required to update a certificate.")
-            return
-        
-        update_fields = {}
-        if id: update_fields['id'] = id
-        if name: update_fields["name"] = name
-        if dns: update_fields["dns"] = dns
-        if ip: update_fields["ip"] = ip
-        if local: update_fields["local"] = local
-        if method: update_fields["method"] = method
-        if key: update_fields["key"] = key
-        if crt: update_fields["crt"] = crt
-        if chain: update_fields["chain"] = chain
-        
-        if not update_fields:
-            print("No fields provided for update.")
-            return
-        
-        result = self.collection.update_one({"fqdn": fqdn}, {"$set": update_fields})
-        
-        if result.modified_count > 0:
-            print(f"Certificate updated for {fqdn}")
-        else:
-            print(f"No updates made for {fqdn} (certificate may not exist).")
-
-    def listCollection(self):
-        for i in self.collection.find():
-            print(i)
-
-    def Collection2List(self):
-        servers = []
-        for i in self.collection.find():
-            servers.append(i)
-        return servers
-
-
-    def Unset_column(self, field_name):
-        """
-        Removes a specified field (column) from all documents in the collection.
-        :param field_name: The name of the field to remove.
-        :return: A message indicating the result of the operation.
-        """
+    if not fqdn and not cert_id:
+        return jsonify({"error": "FQDN or ID required"}), 400
+    
+    query = {}
+    if fqdn:
+        query["fqdn"] = fqdn
+    if cert_id:
         try:
-            result = self.collection.update_many(
-                {},  # Apply to all documents in the collection
-                {"$unset": {field_name: ""}}  # Remove the specified field
-            )
-            return f"{result.modified_count} documents updated. Field '{field_name}' removed."
-        except Exception as e:
-            return f"An error occurred: {str(e)}"
+            query["_id"] = ObjectId(cert_id)
+        except:
+            return jsonify({"error": "Invalid ObjectId format"}), 400
+    
+    if not data:
+        return jsonify({"error": "No update fields provided"}), 400  # Prevent empty updates
+    
+    result = collection.update_one(query, {"$set": data})
+    if result.matched_count > 0:
+        return jsonify({"message": "Certificate updated"})
+    else:
+        return jsonify({"error": "Certificate not found"}), 404
 
+@app.route('/delete', methods=['POST'])
+def delete_certificate():
+    data = request.json
+    try:
+        object_id = data['id']
+        result = collection.delete_one({"_id": ObjectId(object_id)})
+        if result.deleted_count == 1:
+            return jsonify({"message": "Certificate deleted successfully"})
+        else:
+            return jsonify({"error": "Certificate not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
-    def Add_column(self, field_name, default_value=None):
-        """
-        Adds a specified field (column) to all documents in the collection with a default value.
-        :param field_name: The name of the field to add.
-        :param default_value: The default value to set for the new field (default is None).
-        :return: A message indicating the result of the operation.
-        """
-        try:
-            result = self.collection.update_many(
-                {},  # Apply to all documents
-                {"$set": {field_name: default_value}}  # Add field with default value
-            )
-            return f"{result.modified_count} documents updated. Field '{field_name}' added with default value '{default_value}'."
-        except Exception as e:
-            return f"An error occurred: {str(e)}"
+@app.route('/list', methods=['GET'])
+def list_certificates():
+    results = list(collection.find({}, {}))  # Fetch all fields
+    for result in results:
+        result["_id"] = str(result["_id"])  # Convert ObjectId to string
+    return jsonify(results)
 
-
-
-
-
-"""
-delete column
-"""
-# runner = Mongo(DBip,DBname,DBcollectionName)
-# print(runner.Unset_column('id'))
-
-
-
-"""
-add column
-"""
-# runner = Mongo(DBip,DBname,DBcollectionName)
-# print(runner.Add_column('Country',default_value="IL"))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+if __name__ == '__main__':
+    app.run(debug=True)
