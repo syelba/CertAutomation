@@ -14,7 +14,7 @@ collection = db[os.getenv('CollectionName')]
 
 @app.route('/')
 def index():
-    return send_from_directory('.', 'index3.html')
+    return send_from_directory('.', 'index.html')
 
 @app.route('/search', methods=['GET'])
 def search_certificate():
