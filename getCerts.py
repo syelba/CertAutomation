@@ -1,74 +1,69 @@
 import os
-from EditMongoDB import Mongo
+from cert_manager.EditMongoDB import Mongo
 from dotenv import load_dotenv
 from loguru import logger
 import subprocess
-import logging
 from pydantic import BaseModel
 from auth import get_venafi_token
 import config
 import smtplib
-import os
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
-import paramiko
-import paramiko
-from scp import SCPClient
-import pexpect
 import time
+import requests
+import urllib3
+from datetime import datetime
+
+# Configure Loguru logging
+log_filename = f"log_{datetime.now().strftime('%H-%M_%d-%m-%Y')}.log"
+logger.remove()
+logger.add(log_filename, 
+           level="DEBUG", 
+           format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}", 
+           rotation="10 MB", 
+           compression="zip", 
+           backtrace=True, 
+           diagnose=True)
+logger.add(lambda msg: print(msg, end=""), level="INFO")
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+def getStatusCode(dns):
+    PROXIS = {'http': '', 'https': ''}
+    request = requests.get(url=dns, verify=False, proxies=PROXIS)
+    return request.status_code
+
+def get_current_time_with_date():
+    now = datetime.now()
+    return now.strftime("%H:%M_%d-%m-%Y")
 
 def run_command(command_str, shell=False, timeout=10):
-    """
-    Executes a system command where arguments are comma-separated.
-
-    :param command_str: A string with command arguments separated by commas (e.g., "ls,-l").
-    :param shell: Whether to execute the command through the shell (default: False).
-    :param timeout: Max time (in seconds) to wait for command completion.
-    :return: A tuple (stdout, stderr, return_code)
-    """
-    # Split command by comma and remove extra spaces
-    command_list = [arg.strip() for arg in command_str.split(",")]
-
     try:
         result = subprocess.run(
-            command_list,
+            command_str if shell else command_str.split(),
             shell=shell,
-            text=True,
             capture_output=True,
-            timeout=timeout,
-            check=False  # Avoid auto-raising errors, handle them manually
+            text=True,
+            timeout=timeout
         )
-
         return result.stdout.strip(), result.stderr.strip(), result.returncode
-
     except subprocess.TimeoutExpired:
         return None, "Error: Command timed out", -1
-
     except FileNotFoundError:
         return None, "Error: Command not found", -2
-
     except Exception as e:
         return None, f"Error: {str(e)}", -3
 
-
-
 def send_email_with_error_log(smtp_server, smtp_port, sender_email, sender_password, recipient_emails_str, subject, body, file_path):
     try:
-        # Convert comma-separated emails to a list
         recipient_emails = recipient_emails_str.split(",")
-
-        # Create the email message
         msg = MIMEMultipart()
         msg["From"] = sender_email
-        msg["To"] = recipient_emails_str  # Keep the original string so all recipients receive the same email
+        msg["To"] = recipient_emails_str
         msg["Subject"] = subject
-
-        # Attach email body
         msg.attach(MIMEText(body, "plain"))
-
-        # Attach error log file (if exists)
         if file_path and os.path.exists(file_path):
             with open(file_path, "rb") as file:
                 part = MIMEBase("application", "octet-stream")
@@ -76,147 +71,71 @@ def send_email_with_error_log(smtp_server, smtp_port, sender_email, sender_passw
                 encoders.encode_base64(part)
                 part.add_header("Content-Disposition", f"attachment; filename={os.path.basename(file_path)}")
                 msg.attach(part)
-
-        # Connect to SMTP server and send the email
         server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()  # Secure the connection
-        server.login(sender_email, sender_password)  # Authenticate
-        server.sendmail(sender_email, recipient_emails, msg.as_string())  # Send one email to all recipients
+        server.starttls()
+        server.login(sender_email, sender_password)
+        server.sendmail(sender_email, recipient_emails, msg.as_string())
         server.quit()
-
-        print("✅ Email sent successfully to:", recipient_emails_str)
-
+        logger.success(f"Email sent successfully to: {recipient_emails_str}")
     except Exception as e:
-        print(f"❌ Failed to send email: {e}")
-
-
+        logger.error(f"Failed to send email: {e}")
 
 load_dotenv()
-DBname = os.getenv('DBname')
+dst = os.getenv('dst')
 DBip = os.getenv('DBip')
 venafiURL = os.getenv('venafiURL') 
 SysAdminUser = os.getenv('SysAdminUser')
 SysPassword = os.getenv('SysPassword') 
 DBcollectionName = os.getenv("CollectionName")
 
-#connect to DB class
-readMongo = Mongo(DBname=DBname,ip=DBip,CollectionName=DBcollectionName)
+readMongo = Mongo()
 servers = readMongo.Collection2List()
-#check dns certificate days left
-#days_left = get_ssl_expiry(domain="idcvm-zabbix.iil.intel.com")
-#return number 0-90
-
-# Configure logging
-logging.basicConfig(filename="log.txt", level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-#logging.warning(warning_msg)
-#logging.error(error_msg)
-#logging.info(f"vcert getcred output: {output}")
-
-
-#get token from venafi:
 token = get_venafi_token()
 
-"""
-pass
-"""
-def get_ssl_expiry(domain ,port=443):
-    """check certificate experation date with DNS of the certificate with port 443 (using openssl commend not vcert/venfi tool)"""
+def get_ssl_expiry(domain, port=443):
     cmd = f"""
     data=$(echo | openssl s_client -servername {domain} -connect {domain}:{port} 2>/dev/null | openssl x509 -noout -enddate | sed -e 's#notAfter=##')
-    ssldate=$(date -d "${{data}}" '+%s')
+    ssldate=$(date -d \"${{data}}\" '+%s')
     nowdate=$(date '+%s')
     diff=$((ssldate - nowdate))
     echo $((diff / 86400))
     """
     try:
         result = subprocess.run(cmd, shell=True, text=True, capture_output=True)
-
         if result.returncode == 0:
-            message = f"Days left for cert expiration for {domain}: {result.stdout.strip()}"
-            logging.info(message)  # This already writes to log.txt
-            return int(result.stdout.strip())  # Ensure returning an int
-        
+            logger.info(f"Days left for cert expiration for {domain}: {result.stdout.strip()}")
+            return int(result.stdout.strip())
         else:
-            message = f"Error checking certificate expiration for {domain}: {result.stderr.strip()}"
-            logging.error(message)  # Log error (single line)
-            return -1  # Return -1 on failure
-        
+            logger.error(f"Error checking cert expiration for {domain}: {result.stderr.strip()}")
+            return -1
     except Exception as e:
-        message = f"Exception checking certificate expiration for {domain}: {e}"
-        logging.error(message)  # Log exception (single line)
-        return -1  # Return -1 on exception
+        logger.error(f"Exception checking cert expiration for {domain}: {e}")
+        return -1
 
-
-"""
-pass
-"""
 def generate_CSR_Key(fqdn, city, state, Country):
-    """Generate a CSR and Key for each server using vcert."""    
-    # Define the file paths
-    dst = f"{os.getenv('dst')}"
-    # Correct command formatting
-    cmd = [
-        "sudo", "vcert", "gencsr",
-        "--cn", fqdn,
-        "-o", "Intel",
-        "--ou", "CCG",
-        "-l", city,  # Locality (City)
-        "--st", state,  # State
-        "-c", Country,  # Country
-        "--key-file", f"{dst}/{fqdn}/{fqdn}.key",
-        "--csr-file", f"{dst}/{fqdn}/{fqdn}.csr"
-    ]    
+    logger.info(dst)
+    cmd = f'sudo vcert gencsr --cn {fqdn} -o Intel --ou CCG -l {city} --st {state} -c {Country} --key-size 4096 --key-file {dst}/{fqdn}/{fqdn}.key --csr-file {dst}{fqdn}/{fqdn}.csr'
+    logger.info(f"Command that was run: {cmd}")
     try:
-        # Start the command with pexpect to handle passphrase input
-        child = pexpect.spawn(' '.join(cmd), encoding='utf-8')          
-        # Handle the passphrase prompt and send an empty string
-        child.expect('Enter key passphrase:')
-        child.sendline('')  # Send an empty passphrase
-        
-        # Handle the verification passphrase prompt and send an empty string again
-        child.expect('Verifying - Enter key passphrase:')
-        child.sendline('')  # Send an empty passphrase          
-        # Wait for the process to finish and capture the output
-        child.expect(pexpect.EOF)
-        output = child.before 
-        exit_status = child.exitstatus       
-        if exit_status == 0:
-            message = f"CSR and key generated successfully for {fqdn}"
-            logging.info(message)
-            return output.strip()
+        process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
+        stdout, stderr = process.communicate(input="\n\n")
+        if process.returncode == 0:
+            logger.success(f"CSR and key generated successfully for {fqdn}")
+            return stdout.strip()
         else:
-            message = f"Error generating CSR for {fqdn}: {child.before}"
-            logging.error(message)
-            return f"Error: {child.before}"   
+            logger.error(f"Error generating CSR for {fqdn}: {stderr.strip()}")
+            return f"Error: {stderr.strip()}"
     except Exception as e:
-        message = f"Exception during CSR generation for {fqdn}: {e}"
-        logging.error(message)
+        logger.error(f"Exception during CSR generation for {fqdn}: {e}")
         return f"Exception: {e}"
 
-
-
-"""
-pass
-"""
 def renewCertWin(id, fqdn, pfxPassword):
-    """Renew existing certificate for Windows server using the os library"""
-    # Construct the command as a single string
-    cmd = f'sudo vcert renew -t {token} ' \
-          f'-u {venafiURL} ' \
-          f'--file {os.getenv("dst")}/{fqdn}/{fqdn}.pfx ' \
-          f'--format pkcs12 --chain ignore --verbose ' \
-          f'--id "{id}" ' \
-          f'-csr service ' \
-          f'--key-password {pfxPassword}'
-    # Debugging: Print the command being executed
-    print(f"Command that was run: {cmd}")
+    cmd = f'sudo vcert renew -t {token} -u {venafiURL} --file {dst}/{fqdn}/{fqdn}.pfx --format pkcs12 --chain ignore --verbose --id "{id}" -csr service --key-password {pfxPassword}'
+    logger.info(f"Command that was run: {cmd}")
     try:
-        # Run the command and capture its output using os.popen
-        process = os.popen(cmd)  # Open a pipe to execute the command
-        output = process.read()  # Capture the output (stdout)
-        exit_status = process.close()  # Capture the exit status (None if successful)
-
-        # Check the command's exit status
+        process = os.popen(cmd)
+        output = process.read()
+        exit_status = process.close()
         if exit_status is None:
             logger.success(f"renewCertWin success for {fqdn}")
             return output.strip()
@@ -227,23 +146,13 @@ def renewCertWin(id, fqdn, pfxPassword):
         logger.error(f"renewCertWin Error: {e} for {fqdn}")
         return f"Exception: {e}"
 
-
-"""
-pass
-"""
 def renewCertApach2(id, fqdn):
-    """Renew cert for Zabbix server"""  
-    # Construct the command as a single string
-    cmd = f'sudo vcert renew -t "{token}" -u {venafiURL} --id "{id}" ' \
-          f'--csr file:{os.getenv("dst")}/{fqdn}/{fqdn}.csr'
-    # Debugging: Print the command being executed
-    print(f"Command that was run: {cmd}") 
+    cmd = f'sudo vcert renew -t "{token}" -u {venafiURL} --id "{id}" --csr file:{dst}/{fqdn}/{fqdn}.csr'
+    logger.info(f"Command that was run: {cmd}")
     try:
-        # Run the command and capture its output using os.popen
-        process = os.popen(cmd)  # Open a pipe to execute the command
-        output = process.read()  # Capture the output (stdout)
-        exit_status = process.close()  # Capture the exit status (None if successful)
-        # Check the command's exit status
+        process = os.popen(cmd)
+        output = process.read()
+        exit_status = process.close()
         if exit_status is None:
             logger.success(f"renewCertApach2 certs created for {fqdn}")
             return output.strip()
@@ -254,24 +163,14 @@ def renewCertApach2(id, fqdn):
         logger.error(f"renewCertApach2 Error: {e} for {fqdn}")
         return f"Exception: {e}"
 
-    
-"""
-pass
-"""
 def renewCertNginx(id, fqdn):
-    """Renew cert for NGINX servers using the os library"""  
-    # Command construction
-    cmd = f'sudo vcert renew -t {token} -u {venafiURL} --id "{id}" ' \
-          f'--csr file:{os.getenv("dst")}/{fqdn}/{fqdn}.csr'
-    print(f"Command that was run: {cmd}")  # Debugging the exact command  
+    cmd = f'sudo vcert renew -t {token} -u {venafiURL} --id "{id}" --csr file:{dst}/{fqdn}/{fqdn}.csr'
+    logger.info(f"Command that was run: {cmd}")
     try:
-        # Run the command using os.popen
-        process = os.popen(cmd)  # Open a pipe to the command
-        time.sleep(2)  # Introduce the requested delay
-        # Read the command's output
-        output = process.read()  # Capture the command's stdout
-        exit_status = process.close()  # Close the pipe and retrieve the exit status (None if successful)       
-        # Check the command's exit status
+        process = os.popen(cmd)
+        time.sleep(2)
+        output = process.read()
+        exit_status = process.close()
         if exit_status is None:
             logger.success(f"renewCertNginx certs created for {fqdn}")
             return output.strip()
@@ -282,22 +181,13 @@ def renewCertNginx(id, fqdn):
         logger.error(f"renewCertNginx Error: {e} for {fqdn}")
         return f"Exception: {e}"
 
-
-"""
-pass
-"""
 def pickup(id, fqdn):
-    cmd = f'sudo vcert pickup -u {venafiURL} -t {token} --pickup-id "{id}" ' \
-          f'--cert-file /vol/store/PKI/automation/test/{fqdn}/{fqdn}.crt ' \
-          f'--chain-file /vol/store/PKI/automation/test/{fqdn}/IntelSHA256RootCA.crt'
-    # Debugging: print the command being executed
-    print(f"Command that was run: {cmd}")
+    cmd = f'sudo vcert pickup -u {venafiURL} -t {token} --pickup-id "{id}" --cert-file {dst}{fqdn}/{fqdn}.crt --chain-file {dst}{fqdn}/IntelSHA256RootCA.crt'
+    logger.info(f"Command that was run: {cmd}")
     try:
-        # Run the command and capture its output using os.popen
-        process = os.popen(cmd)  # Open a pipe to the command
-        output = process.read()  # Read the output of the command
-        exit_status = process.close()  # Close the pipe and capture the exit status (None if successful)  
-        # Check the command's exit status
+        process = os.popen(cmd)
+        output = process.read()
+        exit_status = process.close()
         if exit_status is None:
             logger.success(f"pickup command succeeded for {fqdn}")
             return output.strip()
@@ -308,74 +198,39 @@ def pickup(id, fqdn):
         logger.error(f"pickup Error: {e} for {fqdn}")
         return f"Exception: {e}"
 
-
-
 def get_cert_to_test():
+    if not dst:
+        logger.error("Environment variable 'dst' is not set.")
+        raise EnvironmentError("Environment variable 'dst' is not set.")
+
     for server in servers:
-        if get_ssl_expiry(server['fqdn']) < config.days_remain:
-            method = server['method']
-            fqdn = server['fqdn']
-            folder_path = f"{os.getenv('dst')}/{fqdn}"
+        if get_ssl_expiry(server.fqdn) < config.days_remain:
+            fqdn = server.fqdn
+            folder_path = os.path.join(dst, fqdn)
+            logger.info(f"Checking folder: {folder_path}")
+            pickup_id = server.pickup_ID
+            method = server.method
 
-            # Ensure the folder exists
-            stdout, stderr, code = run_command(f"ls {os.getenv('dst')}")
-            if not stdout or fqdn not in stdout.split():  # Fix: Handle NoneType case
-                stdout, stderr, code = run_command(f"sudo mkdir -p {folder_path}")
-                logging.info(f"Folder {folder_path} created.")
+            stdout, stderr, code = run_command(f"ls {dst}")
+            if code != 0 or fqdn not in stdout.splitlines():
+                stdout, stderr, code = run_command(f"sudo mkdir -p {folder_path}", shell=True)
+                if code == 0:
+                    logger.info(f"Folder {folder_path} created.")
+                else:
+                    logger.error(f"Failed to create folder {folder_path}: {stderr}")
 
-            # Step 1: Generate CSR Key
-            generate_CSR_Key(
-                fqdn=fqdn,
-                city=server.get('local', ''),
-                state=server.get('state', ''),
-                Country=server.get('Country', '')
-            )
+            logger.info(f"Country for {fqdn}: {server.Country}")
+            generate_CSR_Key(fqdn=fqdn, city=server.local, state=server.state, Country=server.Country)
 
-            # Step 2: Renew Certificate based on method
             if method == "apache2":
-                renewCertApach2(server['pickup-ID'], fqdn)
+                renewCertApach2(pickup_id, fqdn)
             elif method == "nginx":
-                renewCertNginx(server['pickup-ID'], fqdn)
+                renewCertNginx(pickup_id, fqdn)
             elif method == "IIS":
-                renewCertWin(server['pickup-ID'], fqdn, pfxPassword=server.get('pfxPassword', ''))
+                renewCertWin(pickup_id, fqdn, pfxPassword=server.get('pfxPassword', ''))
 
-            # Step 3: Pickup certificate
-            pickup(id=server['pickup-ID'], fqdn=fqdn)
+            pickup(id=pickup_id, fqdn=fqdn)
 
-                       
-
-def transfer_files(remote_host, remote_user, remote_path, local_files, password=None, key_file=None):
-    """
-    Transfers three files to a remote server using SCP.
-    :param remote_host: The remote server hostname or IP.
-    :param remote_user: The remote username.
-    :param remote_path: The destination path on the remote server.
-    :param local_files: List of three local file paths to transfer.
-    :param password: (Optional) Password for SSH authentication.
-    :param key_file: (Optional) Path to the SSH private key file.
-    """
-    if len(local_files) != 3:
-        raise ValueError("Exactly three files must be provided.")
-    # Create an SSH client
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    try:
-        # Connect using password or key
-        if key_file:
-            ssh.connect(remote_host, username=remote_user, key_filename=key_file)
-        elif password:
-            ssh.connect(remote_host, username=remote_user, password=password)
-        else:
-            raise ValueError("Either password or key_file must be provided.")
-        # Create SCP client and transfer files
-        with SCPClient(ssh.get_transport()) as scp:
-            for file in local_files:
-                scp.put(file, remote_path)
-            print("Files transferred successfully!")
-    except Exception as e:
-        print(f"Error: {e}")
-    finally:
-        ssh.close()
 
 
 
