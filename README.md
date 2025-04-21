@@ -110,7 +110,7 @@ They execute `vcert renew` with appropriate flags for each server type.
 Run the main script manually or schedule with a cronjob:
 
 ```bash
-python main.py
+python getCerts.py
 ```
 
 ## 🧚️ Testing & Debugging
