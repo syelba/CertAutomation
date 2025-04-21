@@ -117,9 +117,3 @@ python getCerts.py
 - CSR/private key files are saved per `fqdn` for inspection.
 - log with date of running the python automation will be created with commends that worked/failed
 
-## ✅ Suggestions for Improvements
-
-- Add unit tests and mocks for external calls.
-- Implement retry mechanism on command failures.
-- Support for additional platforms or protocols.
-- Deploy as a service or container with a UI/dashboard.
