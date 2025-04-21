@@ -114,10 +114,8 @@ python getCerts.py
 ```
 
 ## 🧚️ Testing & Debugging
-
-- Use a sandbox server or staging environment to test.
-- Logs provide detailed diagnostics, including failed shell commands and unparsed outputs.
 - CSR/private key files are saved per `fqdn` for inspection.
+- log with date of running the python automation will be created with commends that worked/failed
 
 ## ✅ Suggestions for Improvements
 
