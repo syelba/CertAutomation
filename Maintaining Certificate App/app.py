@@ -16,7 +16,7 @@ collection = db[os.getenv('CollectionName')]
 
 @app.route('/')
 def index():
-    return send_from_directory('.', 'index.html')
+    return send_from_directory('.', 'index3.html')
 
 @app.route('/search', methods=['GET'])
 def search_certificate():
@@ -88,6 +88,9 @@ def update_certificate():
 @app.route('/delete', methods=['POST'])
 def delete_certificate():
     data = request.json
+    password = data.get('password')
+    if password != os.getenv("SysPassword"):  # Load password from .env
+        return jsonify({"message": "Unauthorized: Incorrect password"})
     try:
         object_id = data['id']
         result = collection.delete_one({"_id": ObjectId(object_id)})
@@ -108,6 +111,6 @@ def list_certificates():
     return jsonify(results)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True,port=5555)
 
 
