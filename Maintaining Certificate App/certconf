@@ -1,0 +1,35 @@
+#redirect dns to 443 from 80 
+server {
+    listen 80;
+    server_name certAutomation.iil.intel.com;
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+#redirect the ip address to 443 from 80 
+server {
+    listen 80;
+    server_name <ip address>;
+
+    return 301 https://$host$request_uri;
+}
+
+
+#files and such
+server {
+    listen              443 ssl;
+    server_name         certAutomation.iil.intel.com;
+
+    ssl_certificate     /home/user/localCert/fullchain.crt;
+    ssl_certificate_key /home/user/localCert/certAutomation.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    location / {
+        proxy_pass http://127.0.0.1:5555;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
