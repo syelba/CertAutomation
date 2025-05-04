@@ -75,7 +75,6 @@ def add_certificate():
     data = request.json
     if not data:
         return jsonify({"error": "No data provided"}), 400
-
     data.setdefault("fqdn", "")
     data.setdefault("dns", "")
     data.setdefault("ip", "")
@@ -84,10 +83,12 @@ def add_certificate():
     data.setdefault("pickup-ID", "")
     data.setdefault("state", "")
     data.setdefault("Country", "IL")
-    data.setdefault("cert_location", "")
     data.setdefault("host_user", "")
     data.setdefault("host_password", "IL")
-
+    data.setdefault("cert_path", "")
+    data.setdefault("key", "")
+    data.setdefault("rootca", "")
+    data.setdefault("approve","")
     if "Country" in data and isinstance(data["Country"], str):
         data["Country"] = data["Country"].strip().upper()
 
