@@ -10,14 +10,14 @@ load_dotenv()
 
 app = Flask(__name__, static_folder=".", static_url_path="", template_folder=".")
 
-# Secret key for session management (change this in production!)
+
 app.secret_key = os.getenv('flask_sec')
 
 # Secure session cookies
 app.config.update(
-    SESSION_COOKIE_SECURE=True,       # Use HTTPS in production
-    SESSION_COOKIE_HTTPONLY=True,     # Prevent JavaScript access
-    SESSION_COOKIE_SAMESITE='Lax'     # Mitigate CSRF risks
+    SESSION_COOKIE_SECURE=True,       
+    SESSION_COOKIE_HTTPONLY=True,  
+    SESSION_COOKIE_SAMESITE='Lax'   
 )
 
 # MongoDB connection
