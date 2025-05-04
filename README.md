@@ -115,6 +115,7 @@ python getCerts.py
 
 
 ## for running the web flask app run:
+you need 3 files here certAPP.py,login.html,index.html
 gunicorn -w 4 -b 127.0.0.1:5555 certAPP:app
 
 
