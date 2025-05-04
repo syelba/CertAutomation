@@ -27,6 +27,13 @@ class CertificateModel(BaseModel):
     pickup_ID: Optional[str] = Field(None, description="Pickup ID for the certificate")
     state: Optional[str] = Field(None, description="state of server")
     Country: Optional[str] = Field(None, description="2 letter Country code")
+    cert_path : Optional[str] = Field(None, description="cert file path")
+    key : Optional[str] = Field(None, description="key file path")
+    rootca : Optional[str] = Field(None, description="rootca file path")
+    approve : Optional[str] = Field(None, description="approve to dyploy Yes/No")
+
+
+
 
     @root_validator(pre=True)
     def handle_mongo_id(cls, values):
