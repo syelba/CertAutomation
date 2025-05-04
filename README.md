@@ -113,6 +113,16 @@ Run the main script manually or schedule with a cronjob:
 python getCerts.py
 ```
 
+
+## for running the web flask app run:
+gunicorn -w 4 -b 127.0.0.1:5555 certAPP:app
+
+
+
+
+
+
+
 ## 🧚️ Testing & Debugging
 - CSR/private key files are saved per `fqdn` for inspection.
 - log with date of running the python automation will be created with commends that worked/failed
