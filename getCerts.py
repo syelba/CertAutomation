@@ -43,6 +43,38 @@ logger.add(lambda msg: print(msg, end=""), level="INFO")
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+
+def run_remote_command(host, username, password, command, port=22):
+    """Connect to a remote host and execute a shell command using SSH.
+
+    Args:
+        host (str): The IP or hostname of the remote machine.
+        username (str): SSH username.
+        password (str): SSH password.
+        command (str): Command to run on the remote host.
+        port (int, optional): SSH port number. Defaults to 22.
+
+    Returns:
+        str: Output from the command.
+    """
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(hostname=host, port=port, username=username, password=password)
+
+        stdin, stdout, stderr = client.exec_command(command)
+        output = stdout.read().decode().strip()
+        error = stderr.read().decode().strip()
+
+        client.close()
+
+        if error:
+            return f"Error: {error}"
+        return output
+    except Exception as e:
+        return f"Exception: {str(e)}"
+
+
 def getStatusCode(dns):
     PROXIS = {'http': '', 'https': ''}
     request = requests.get(url=dns, verify=False, proxies=PROXIS)
@@ -271,12 +303,7 @@ def renewCertNetapp(id, fqdn):
             return f"Error: Command failed with exit status {exit_status}"
     except Exception as e:
         logger.error(f"renewCertNetapp Error: {e} for {fqdn}")
-        return f"Exception: {e}"
-
-def deployCertNetapp(fqdn):
-    pass
-
-
+        return f"Exception: {e}"   
 
 def get_cert_to_test():
     if not dst:
@@ -311,6 +338,75 @@ def get_cert_to_test():
 
             pickup(id=pickup_id, fqdn=fqdn)
 
+def dyploy_cert_apache2(ip,host_user,host_password,crt,key,rootca,dns,fqdn):
+    path = os.getenv('dst')+fqdn
+    # cp crt  sshpass -p 'your_password' scp user@192.168.1.100:/path/to/file /local/path
+    run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'sshpass -p "{os.getenv('SysPassword')}" scp {os.getenv('SysAdminUser')}@{ip}:{path} {crt}')
+    # cp key
+    run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'sshpass -p "{os.getenv('SysPassword')}" scp {os.getenv('SysAdminUser')}@{ip}:{path} {key}')
+    # cp rootca
+    run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'sshpass -p "{os.getenv('SysPassword')}" scp {os.getenv('SysAdminUser')}@{ip}:{path} {rootca}')
+    # restart service
+    run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'sudo systemctl restart apache2.service')
+    # check status code
+    if getStatusCode(dns) == True and get_ssl_expiry > 30:
+        return "certoficate deployd successfully"
+    else:
+        send_email_with_error_log()
+
+def dyploy_cert_nginx(ip,host_user,host_password,crt,key,rootca,dns,fqdn):
+    path = os.getenv('dst')+fqdn
+    # cp crt
+    run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'sshpass -p "{os.getenv('SysPassword')}" scp {host_user}@{ip}:{path} {crt}')
+    # cp key
+    run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'sshpass -p "{os.getenv('SysPassword')}" scp {host_user}@{ip}:{path} {key}')
+    # cp rootca
+    run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'sshpass -p "{os.getenv('SysPassword')}" scp {host_user}@{ip}:{path} {rootca}')
+    #connect togther crt with chain
+    run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'cat {fqdn}.crt IntelSHA256RootCA.crt > fullcain.crt')
+    # restart service
+    run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'sudo systemctl restart nginx.service')
+    # check status code
+    if getStatusCode(dns) == True and get_ssl_expiry > 30:
+        return "certoficate deployd successfully"
+    else:
+        send_email_with_error_log()
+
+def dyploy_cert_IIS(ip,host_user,host_password,crt,key,rootca,dns,fqdn):
+    path = os.getenv('dst')+fqdn
+    # cp crt
+    run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'sshpass -p "{os.getenv('SysPassword')}" scp {host_user}@{ip}:{path} {crt}')
+    # restart service
+    run_remote_command(host='10.12.176.13',port=22,username=' ',password=' ',command='pwd')
+    # check status code
+    if getStatusCode(dns) == True and get_ssl_expiry > 30:
+        return "certoficate deployd successfully"
+    else:
+        send_email_with_error_log()
+
+def dyploy_cert_netAPP(crt,key,rootca,dns):
+    path = r'\\jercv01a-cifs.jer.intel.com\iLS\Web\PKI\automation\test'
+    # cp crt
+    run_remote_command(host='10.12.176.13',port=22,username=' ',password=' ',command='pwd')
+    # cp key
+    run_remote_command(host='10.12.176.13',port=22,username=' ',password=' ',command='pwd')
+    # cp rootca
+    run_remote_command(host='10.12.176.13',port=22,username=' ',password=' ',command='pwd')
+    # join crt and rootca to 1 file 
+    run_remote_command(host='10.12.176.13',port=22,username=' ',password=' ',command='pwd')
+    # restart service
+    run_remote_command(host='10.12.176.13',port=22,username=' ',password=' ',command='pwd')
+    # check status code
+    if getStatusCode(dns) == True and get_ssl_expiry > 30:
+        return "certoficate deployd successfully"
+    else:
+        send_email_with_error_log()
+
+
+
 
 if __name__ == '__main__':
-    get_cert_to_test()
+    #get_cert_to_test()
+    #deploy on netapp work with nemikko
+    #deploy on linux using ssh paramiko
+    print(run_remote_command(host='10.12.176.13',port=22,username=' ',password=' ',command='pwd'))
