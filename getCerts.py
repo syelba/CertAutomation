@@ -377,7 +377,7 @@ def dyploy_cert_IIS(ip,host_user,host_password,crt,key,rootca,dns,fqdn):
     # cp crt
     run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'sshpass -p "{os.getenv('SysPassword')}" scp {host_user}@{ip}:{path} {crt}')
     # restart service
-    run_remote_command(host='10.12.176.13',port=22,username=' ',password=' ',command='pwd')
+    run_remote_command(host=' ',port=22,username=' ',password=' ',command='pwd')
     # check status code
     if getStatusCode(dns) == True and get_ssl_expiry > 30:
         return "certoficate deployd successfully"
@@ -387,15 +387,15 @@ def dyploy_cert_IIS(ip,host_user,host_password,crt,key,rootca,dns,fqdn):
 def dyploy_cert_netAPP(crt,key,rootca,dns):
     path = r'\\jercv01a-cifs.jer.intel.com\iLS\Web\PKI\automation\test'
     # cp crt
-    run_remote_command(host='10.12.176.13',port=22,username=' ',password=' ',command='pwd')
+    run_remote_command(host=' ',port=22,username=' ',password=' ',command='pwd')
     # cp key
-    run_remote_command(host='10.12.176.13',port=22,username=' ',password=' ',command='pwd')
+    run_remote_command(host=' ',port=22,username=' ',password=' ',command='pwd')
     # cp rootca
-    run_remote_command(host='10.12.176.13',port=22,username=' ',password=' ',command='pwd')
+    run_remote_command(host=' ',port=22,username=' ',password=' ',command='pwd')
     # join crt and rootca to 1 file 
-    run_remote_command(host='10.12.176.13',port=22,username=' ',password=' ',command='pwd')
+    run_remote_command(host=' ',port=22,username=' ',password=' ',command='pwd')
     # restart service
-    run_remote_command(host='10.12.176.13',port=22,username=' ',password=' ',command='pwd')
+    run_remote_command(host=' ',port=22,username=' ',password=' ',command='pwd')
     # check status code
     if getStatusCode(dns) == True and get_ssl_expiry > 30:
         return "certoficate deployd successfully"
@@ -409,4 +409,4 @@ if __name__ == '__main__':
     #get_cert_to_test()
     #deploy on netapp work with nemikko
     #deploy on linux using ssh paramiko
-    print(run_remote_command(host='10.12.176.13',port=22,username=' ',password=' ',command='pwd'))
+    print(run_remote_command(host=' ',port=22,username=' ',password=' ',command='pwd'))
