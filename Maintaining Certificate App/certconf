@@ -1,29 +1,32 @@
-#redirect dns to 443 from 80 
+
+# Redirect HTTP requests by IP or domain to HTTPS
 server {
     listen 80;
-    server_name certAutomation.iil.intel.com;
+    server_name certautomation.iil.intel.com 10.12.176.19;
 
-    location / {
-        return 301 https://$host$request_uri;
-    }
+    return 301 https://certautomation.iil.intel.com$request_uri;
 }
 
-#redirect the ip address to 443 from 80 
+# Redirect HTTPS requests by IP to example.com
 server {
-    listen 80;
-    server_name <ip address>;
+    listen 443 ssl;
+    server_name 10.12.176.19;
 
-    return 301 https://$host$request_uri;
+    ssl_certificate     /home/tester/localCert/fullchain.crt;
+    ssl_certificate_key /home/tester/localCert/certAutomation.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    return 301 https://certautomation.iil.intel.com$request_uri;
 }
 
-
-#files and such
+# Main HTTPS server
 server {
-    listen              443 ssl;
-    server_name         certAutomation.iil.intel.com;
+    listen 443 ssl;
+    server_name certautomation.iil.intel.com;
 
-    ssl_certificate     /home/user/localCert/fullchain.crt;
-    ssl_certificate_key /home/user/localCert/certAutomation.key;
+    ssl_certificate     /home/tester/localCert/fullchain.crt;
+    ssl_certificate_key /home/tester/localCert/certAutomation.key;
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
 
