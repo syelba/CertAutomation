@@ -152,6 +152,30 @@ def generate_CSR_Key(fqdn, city, state, Country):
         logger.error(f"Exception during CSR generation for {fqdn}: {e}")
         return f"Exception: {e}"
 
+def renewCert(id, fqdn, type=None, pfxPassword=None, cmd=None):
+    try:
+        # Determine the command to run based on the type
+        if type == "windows":
+            command = vcert_commends.windows_crt_renew(cmd['token'], cmd['venafiURL'], fqdn, id, cmd['dst'], pfxPassword)
+        elif type == "apache_nginx":
+            command = vcert_commends.renew_apache_nginx(cmd['token'], cmd['venafiURL'], fqdn, id, cmd['dst'])
+        elif type == "netapp":
+            command = vcert_commends.renew_netapp(cmd['token'], cmd['venafiURL'], fqdn, id, cmd['dst'])
+        else:
+            logger.error(f"Unsupported certificate type: {type}")
+            return f"Unsupported certificate type: {type}"
+        logger.info(f"Command that was run: {command}")
+        output, exit_status = run_command(command)
+        if exit_status == 0:
+            logger.info(f"{type} certs created for {fqdn}")
+            return output.strip()
+        else:
+            logger.error(f"{type} Error: Command failed with exit status {exit_status} for {fqdn}")
+            return f"Error: Command failed with exit status {exit_status}"
+    except Exception as e:
+        logger.error(f"{type} Error: {e} for {fqdn}")
+        return f"Exception: {e}"
+
 def renewCertWin(id, fqdn, pfxPassword):
     cmd = f'sudo vcert renew -t {token} -u {venafiURL} --file {dst}/{fqdn}/{fqdn}.pfx --format pkcs12 --chain ignore --verbose --id "{id}" -csr service --key-password {pfxPassword}'
     logger.info(f"Command that was run: {cmd}")
