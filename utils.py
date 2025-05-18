@@ -1,0 +1,147 @@
+from datetime import datetime
+from loguru import logger
+import config
+import smtplib
+import subprocess
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+import time
+import asyncssh
+import asyncio
+import getpass
+import requests
+import vcert_commends
+from dotenv import load_dotenv
+import os
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+
+
+load_dotenv()
+
+def run_command(command_str, shell=True, timeout=10):
+    """
+    Executes a system command where arguments are comma-separated.
+
+    :param command_str: A string with command arguments separated by commas (e.g., "ls,-l").
+    :param shell: Whether to execute the command through the shell (default: False).
+    :param timeout: Max time (in seconds) to wait for command completion.
+    :return: A tuple (stdout, stderr, return_code)
+    """
+    # Split command by comma and remove extra spaces
+    command_list = [arg.strip() for arg in command_str.split(",")]
+
+    try:
+        result = subprocess.run(
+            command_list,
+            shell=shell,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            check=False  # Avoid auto-raising errors, handle them manually
+        )
+
+        return result.stdout.strip(), result.stderr.strip(), result.returncode
+
+    except subprocess.TimeoutExpired:
+        return None, "Error: Command timed out", -1
+
+    except FileNotFoundError:
+        return None, "Error: Command not found", -2
+
+    except Exception as e:
+        return None, f"Error: {str(e)}", -3
+
+
+async def execute_command(hostname, username, password,command):
+    async with asyncssh.connect(hostname, username = username,password=password,known_hosts=None) as connection:
+        result = await connection.run(command)
+        return result.stdout
+
+
+
+
+
+
+def send_email_with_error_log(recipient_emails_str, subject, body, file_path, 
+                              smtp_server=None, smtp_port=587, sender_email=None, sender_password=None):
+    try:
+        # Use environment variables if parameters are not provided
+        smtp_server = smtp_server or os.getenv('officeServer')
+        sender_email = sender_email or os.getenv('Email')
+        sender_password = sender_password or os.getenv('SysPassword')
+
+        if not smtp_server or not sender_email or not sender_password:
+            raise ValueError("SMTP server, sender email, and sender password must be provided.")
+
+        # Convert comma-separated emails to a list
+        recipient_emails = recipient_emails_str.split(",")
+
+        # Create the email message
+        msg = MIMEMultipart()
+        msg["From"] = sender_email
+        msg["To"] = recipient_emails_str  # Keep the original string so all recipients receive the same email
+        msg["Subject"] = subject
+
+        # Attach email body
+        msg.attach(MIMEText(body, "plain"))
+
+        # Attach error log file (if exists)
+        if file_path and os.path.exists(file_path):
+            with open(file_path, "rb") as file:
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(file.read())
+                encoders.encode_base64(part)
+                part.add_header("Content-Disposition", f"attachment; filename={os.path.basename(file_path)}")
+                msg.attach(part)
+
+        # Connect to SMTP server and send the email
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()  # Secure the connection
+        server.login(sender_email, sender_password)  # Authenticate
+        server.sendmail(sender_email, recipient_emails, msg.as_string())  # Send one email to all recipients
+        server.quit()
+
+        print("✅ Email sent successfully to:", recipient_emails_str)
+
+    except Exception as e:
+        print(f"❌ Failed to send email: {e}")
+
+
+
+def getStatusCode(dns):
+    PROXIS = {'http': '', 'https': ''}
+    request = requests.get(url=dns, verify=False, proxies=PROXIS)
+    return request.status_code
+
+def get_current_time_with_date():
+    now = datetime.now()
+    return now.strftime("%H:%M_%d-%m-%Y")
+
+
+def get_ssl_expiry(domain, port=443):
+    cmd = f"""
+    data=$(echo | openssl s_client -servername {domain} -connect {domain}:{port} 2>/dev/null | openssl x509 -noout -enddate | sed -e 's#notAfter=##')
+    ssldate=$(date -d \"${{data}}\" '+%s')
+    nowdate=$(date '+%s')
+    diff=$((ssldate - nowdate))
+    echo $((diff / 86400))
+    """
+    try:
+        result = subprocess.run(cmd, shell=True, text=True, capture_output=True)
+        if result.returncode == 0:
+            logger.info(f"Days left for cert expiration for {domain}: {result.stdout.strip()}")
+            return int(result.stdout.strip())
+        else:
+            logger.error(f"Error checking cert expiration for {domain}: {result.stderr.strip()}")
+            return -1
+    except Exception as e:
+        logger.error(f"Exception checking cert expiration for {domain}: {e}")
+        return -1
+
+
