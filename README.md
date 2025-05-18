@@ -49,6 +49,8 @@ project/
 ├── auth.py                    # Token management for Venafi
 ├── getCerts.py                    # Main automation script
 ├── .env                       # Environment secrets
+├── deploy_cert.py                # dyploy on machines
+├── vcert_commands.py              # vcert commands
 ├── log_*.log                  # Auto-generated runtime logs
 └── requirements.txt
 ```
