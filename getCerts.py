@@ -19,88 +19,14 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 import paramiko
-import paramiko
 from scp import SCPClient
 import pexpect
 import time
 from cert_manager.EditMongoDB import Mongo
-from utils import run_command, send_email_with_error_log
+from utils import run_command, send_email_with_error_log,get_ssl_expiry,getStatusCode,execute_command
 import re
 from netmiko import ConnectHandler
-
-
-# Configure Loguru logging
-log_filename = f"log_{datetime.now().strftime('%H-%M_%d-%m-%Y')}.log"
-logger.remove()
-logger.add(log_filename, 
-           level="DEBUG", 
-           format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}", 
-           rotation="10 MB", 
-           compression="zip", 
-           backtrace=True, 
-           diagnose=True)
-logger.add(lambda msg: print(msg, end=""), level="INFO")
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-
-def run_remote_command(host, username, password, command, port=22):
-    """Connect to a remote host and execute a shell command using SSH.
-
-    Args:
-        host (str): The IP or hostname of the remote machine.
-        username (str): SSH username.
-        password (str): SSH password.
-        command (str): Command to run on the remote host.
-        port (int, optional): SSH port number. Defaults to 22.
-
-    Returns:
-        str: Output from the command.
-    """
-    try:
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        client.connect(hostname=host, port=port, username=username, password=password)
-
-        stdin, stdout, stderr = client.exec_command(command)
-        output = stdout.read().decode().strip()
-        error = stderr.read().decode().strip()
-
-        client.close()
-
-        if error:
-            return f"Error: {error}"
-        return output
-    except Exception as e:
-        return f"Exception: {str(e)}"
-
-
-def getStatusCode(dns):
-    PROXIS = {'http': '', 'https': ''}
-    request = requests.get(url=dns, verify=False, proxies=PROXIS)
-    return request.status_code
-
-def get_current_time_with_date():
-    now = datetime.now()
-    return now.strftime("%H:%M_%d-%m-%Y")
-
-def run_command(command_str, shell=False, timeout=10):
-    try:
-        result = subprocess.run(
-            command_str if shell else command_str.split(),
-            shell=shell,
-            capture_output=True,
-            text=True,
-            timeout=timeout
-        )
-        return result.stdout.strip(), result.stderr.strip(), result.returncode
-    except subprocess.TimeoutExpired:
-        return None, "Error: Command timed out", -1
-    except FileNotFoundError:
-        return None, "Error: Command not found", -2
-    except Exception as e:
-        return None, f"Error: {str(e)}", -3
-
+import vcert_commends
 
 
 load_dotenv()
@@ -114,36 +40,33 @@ DBcollectionName = os.getenv("CollectionName")
 readMongo = Mongo()
 servers = readMongo.Collection2List()
 token = get_venafi_token()
+# Configure Loguru logging
+log_filename = f"log_renew_{datetime.now().strftime('%H-%M_%d-%m-%Y')}.log"
+logger.remove()
+logger.add(log_filename, 
+           level="DEBUG", 
+           format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}", 
+           rotation="10 MB", 
+           compression="zip", 
+           backtrace=True, 
+           diagnose=True)
+logger.add(lambda msg: print(msg, end=""), level="INFO")
 
-def get_ssl_expiry(domain, port=443):
-    cmd = f"""
-    data=$(echo | openssl s_client -servername {domain} -connect {domain}:{port} 2>/dev/null | openssl x509 -noout -enddate | sed -e 's#notAfter=##')
-    ssldate=$(date -d \"${{data}}\" '+%s')
-    nowdate=$(date '+%s')
-    diff=$((ssldate - nowdate))
-    echo $((diff / 86400))
-    """
-    try:
-        result = subprocess.run(cmd, shell=True, text=True, capture_output=True)
-        if result.returncode == 0:
-            logger.info(f"Days left for cert expiration for {domain}: {result.stdout.strip()}")
-            return int(result.stdout.strip())
-        else:
-            logger.error(f"Error checking cert expiration for {domain}: {result.stderr.strip()}")
-            return -1
-    except Exception as e:
-        logger.error(f"Exception checking cert expiration for {domain}: {e}")
-        return -1
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-def generate_CSR_Key(fqdn, city, state, Country):
-    logger.info(dst)
-    cmd = f'sudo vcert gencsr --cn {fqdn} -o Intel --ou CCG -l {city} --st {state} -c {Country} --key-size 4096 --key-file {dst}/{fqdn}/{fqdn}.key --csr-file {dst}{fqdn}/{fqdn}.csr'
-    logger.info(f"Command that was run: {cmd}")
+
+
+def generate_CSR_Key(fqdn, city, state, Country, dst):
     try:
-        process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
-        stdout, stderr = process.communicate(input="\n\n")
-        if process.returncode == 0:
-            logger.success(f"CSR and key generated successfully for {fqdn}")
+        logger.info(f"{dst} for generating CSR")
+        cmd = vcert_commends.gen_csr(fqdn, city, state, Country, dst)
+        logger.info(f"Command that was run: {cmd}")
+
+        # Execute the command using run_command
+        stdout, stderr, exit_status = run_command(cmd)
+
+        if exit_status == 0:
+            logger.info(f"CSR and key generated successfully for {fqdn}")
             return stdout.strip()
         else:
             logger.error(f"Error generating CSR for {fqdn}: {stderr.strip()}")
@@ -151,6 +74,7 @@ def generate_CSR_Key(fqdn, city, state, Country):
     except Exception as e:
         logger.error(f"Exception during CSR generation for {fqdn}: {e}")
         return f"Exception: {e}"
+
 
 def renewCert(id, fqdn, type=None, pfxPassword=None, cmd=None):
     try:
@@ -176,58 +100,7 @@ def renewCert(id, fqdn, type=None, pfxPassword=None, cmd=None):
         logger.error(f"{type} Error: {e} for {fqdn}")
         return f"Exception: {e}"
 
-def renewCertWin(id, fqdn, pfxPassword):
-    cmd = f'sudo vcert renew -t {token} -u {venafiURL} --file {dst}/{fqdn}/{fqdn}.pfx --format pkcs12 --chain ignore --verbose --id "{id}" -csr service --key-password {pfxPassword}'
-    logger.info(f"Command that was run: {cmd}")
-    try:
-        process = os.popen(cmd)
-        output = process.read()
-        exit_status = process.close()
-        if exit_status is None:
-            logger.success(f"renewCertWin success for {fqdn}")
-            return output.strip()
-        else:
-            logger.error(f"renewCertWin Error: Command failed with exit status {exit_status} for {fqdn}")
-            return f"Error: Command failed with exit status {exit_status}"
-    except Exception as e:
-        logger.error(f"renewCertWin Error: {e} for {fqdn}")
-        return f"Exception: {e}"
-
-def renewCertApach2(id, fqdn):
-    cmd = f'sudo vcert renew -t "{token}" -u {venafiURL} --id "{id}" --csr file:{dst}/{fqdn}/{fqdn}.csr'
-    logger.info(f"Command that was run: {cmd}")
-    try:
-        process = os.popen(cmd)
-        output = process.read()
-        exit_status = process.close()
-        if exit_status is None:
-            logger.success(f"renewCertApach2 certs created for {fqdn}")
-            return output.strip()
-        else:
-            logger.error(f"renewCertApach2 Error: Command failed with exit status {exit_status} for {fqdn}")
-            return f"Error: Command failed with exit status {exit_status}"
-    except Exception as e:
-        logger.error(f"renewCertApach2 Error: {e} for {fqdn}")
-        return f"Exception: {e}"
-
-def renewCertNginx(id, fqdn):
-    cmd = f'sudo vcert renew -t {token} -u {venafiURL} --id "{id}" --csr file:{dst}/{fqdn}/{fqdn}.csr'
-    logger.info(f"Command that was run: {cmd}")
-    try:
-        process = os.popen(cmd)
-        time.sleep(2)
-        output = process.read()
-        exit_status = process.close()
-        if exit_status is None:
-            logger.success(f"renewCertNginx certs created for {fqdn}")
-            return output.strip()
-        else:
-            logger.error(f"renewCertNginx Error: Command failed with exit status {exit_status} for {fqdn}")
-            return f"Error: Command failed with exit status {exit_status}"
-    except Exception as e:
-        logger.error(f"renewCertNginx Error: {e} for {fqdn}")
-        return f"Exception: {e}"
-
+    
 def pickup(id, fqdn):
     cmd = f'sudo vcert pickup -u {venafiURL} -t {token} --pickup-id "{id}" --cert-file {dst}{fqdn}/{fqdn}.crt --chain-file {dst}{fqdn}/IntelSHA256RootCA.crt'
     logger.info(f"Command that was run: {cmd}")
@@ -341,7 +214,6 @@ def get_cert_to_test():
             logger.info(f"Checking folder: {folder_path}")
             pickup_id = server.pickup_ID
             method = server.method
-
             stdout, stderr, code = run_command(f"ls {dst}")
             if code != 0 or fqdn not in stdout.splitlines():
                 stdout, stderr, code = run_command(f"sudo mkdir -p {folder_path}", shell=True)
@@ -354,83 +226,19 @@ def get_cert_to_test():
             generate_CSR_Key(fqdn=fqdn, city=server.local, state=server.state, Country=server.Country)
 
             if method == "apache2":
-                renewCertApach2(pickup_id, fqdn)
+                renewCert(pickup_id, fqdn,type= 'apache2')
             elif method == "nginx":
-                renewCertNginx(pickup_id, fqdn)
+                renewCert(pickup_id, fqdn, type= 'nginx')
             elif method == "IIS":
-                renewCertWin(pickup_id, fqdn, pfxPassword=server.get('pfxPassword', ''))
-
+                renewCert(pickup_id, fqdn, pfxPassword=server.get('pfxPassword', ''),type='windows')
+            
             pickup(id=pickup_id, fqdn=fqdn)
 
-def dyploy_cert_apache2(ip,host_user,host_password,crt,key,rootca,dns,fqdn):
-    path = os.getenv('dst')+fqdn
-    # cp crt  sshpass -p 'your_password' scp user@192.168.1.100:/path/to/file /local/path
-    run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'sshpass -p "{os.getenv('SysPassword')}" scp {os.getenv('SysAdminUser')}@{ip}:{path} {crt}')
-    # cp key
-    run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'sshpass -p "{os.getenv('SysPassword')}" scp {os.getenv('SysAdminUser')}@{ip}:{path} {key}')
-    # cp rootca
-    run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'sshpass -p "{os.getenv('SysPassword')}" scp {os.getenv('SysAdminUser')}@{ip}:{path} {rootca}')
-    # restart service
-    run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'sudo systemctl restart apache2.service')
-    # check status code
-    if getStatusCode(dns) == True and get_ssl_expiry > 30:
-        return "certoficate deployd successfully"
-    else:
-        send_email_with_error_log()
-
-def dyploy_cert_nginx(ip,host_user,host_password,crt,key,rootca,dns,fqdn):
-    path = os.getenv('dst')+fqdn
-    # cp crt
-    run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'sshpass -p "{os.getenv('SysPassword')}" scp {host_user}@{ip}:{path} {crt}')
-    # cp key
-    run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'sshpass -p "{os.getenv('SysPassword')}" scp {host_user}@{ip}:{path} {key}')
-    # cp rootca
-    run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'sshpass -p "{os.getenv('SysPassword')}" scp {host_user}@{ip}:{path} {rootca}')
-    #connect togther crt with chain
-    run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'cat {fqdn}.crt IntelSHA256RootCA.crt > fullcain.crt')
-    # restart service
-    run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'sudo systemctl restart nginx.service')
-    # check status code
-    if getStatusCode(dns) == True and get_ssl_expiry > 30:
-        return "certoficate deployd successfully"
-    else:
-        send_email_with_error_log()
-
-def dyploy_cert_IIS(ip,host_user,host_password,crt,key,rootca,dns,fqdn):
-    path = os.getenv('dst')+fqdn
-    # cp crt
-    run_remote_command(host=ip,port=22,username=host_user,password=host_password,command=f'sshpass -p "{os.getenv('SysPassword')}" scp {host_user}@{ip}:{path} {crt}')
-    # restart service
-    run_remote_command(host=' ',port=22,username=' ',password=' ',command='pwd')
-    # check status code
-    if getStatusCode(dns) == True and get_ssl_expiry > 30:
-        return "certoficate deployd successfully"
-    else:
-        send_email_with_error_log()
-
-def dyploy_cert_netAPP(crt,key,rootca,dns):
-    path = r'\\jercv01a-cifs.jer.intel.com\iLS\Web\PKI\automation\test'
-    # cp crt
-    run_remote_command(host=' ',port=22,username=' ',password=' ',command='pwd')
-    # cp key
-    run_remote_command(host=' ',port=22,username=' ',password=' ',command='pwd')
-    # cp rootca
-    run_remote_command(host=' ',port=22,username=' ',password=' ',command='pwd')
-    # join crt and rootca to 1 file 
-    run_remote_command(host=' ',port=22,username=' ',password=' ',command='pwd')
-    # restart service
-    run_remote_command(host=' ',port=22,username=' ',password=' ',command='pwd')
-    # check status code
-    if getStatusCode(dns) == True and get_ssl_expiry > 30:
-        return "certoficate deployd successfully"
-    else:
-        send_email_with_error_log()
 
 
 
 
-if __name__ == '__main__':
-    #get_cert_to_test()
-    #deploy on netapp work with nemikko
-    #deploy on linux using ssh paramiko
-    print(run_remote_command(host=' ',port=22,username=' ',password=' ',command='pwd'))
+
+if __name__ == '__main__':   
+    get_cert_to_test()
+
