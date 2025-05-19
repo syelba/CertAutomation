@@ -29,14 +29,14 @@ def deploy_cert(ip, host_user, host_password, crt, key, rootca, dns, fqdn, type)
 
         # Copy certificate
         logger.info("Copying certificate...")
-        stdout, stderr, code = run_command(f"sshpass -p '{host_password}' scp {path}/{fqdn}.crt {host_user}@{ip}:/home/{host_user}/")
+        stdout, stderr, code = run_command(f"sshpass -p '{host_password}' scp {path}/{fqdn}_test.crt {host_user}@{ip}:/home/{host_user}/")
         if code != 0:
             logger.error(f"Failed to copy certificate: {stderr}")
             raise Exception(f"Failed to copy certificate: {stderr}")
 
         # Copy key
         logger.info("Copying key...")
-        stdout, stderr, code = run_command(f"sshpass -p '{host_password}' scp {path}/{fqdn}.key {host_user}@{ip}:/home/{host_user}/")
+        stdout, stderr, code = run_command(f"sshpass -p '{host_password}' scp {path}/{fqdn}_test.key {host_user}@{ip}:/home/{host_user}/")
         if code != 0:
             logger.error(f"Failed to copy key: {stderr}")
             raise Exception(f"Failed to copy key: {stderr}")
@@ -47,8 +47,25 @@ def deploy_cert(ip, host_user, host_password, crt, key, rootca, dns, fqdn, type)
         if code != 0:
             logger.error(f"Failed to copy root CA: {stderr}")
             raise Exception(f"Failed to copy root CA: {stderr}")
+        
+        
 
         if type == 'apache2':
+
+            # edit config file key 
+            logger.info("Creating fullchain certificate for apache2...")
+            stdout, stderr, code = run_command(f"sshpass -p '{host_password}' ssh {host_user}@{ip} sudo sed -i -e 's/certAutomation_test.key/certAutomation.key/g' /etc/nginx/sites-available/certapp")
+            if code != 0:
+                logger.error(f"Failed to edit config file key: {stderr}")
+                raise Exception(f"Failed to edit config file key: {stderr}")
+            
+            # edit config file crt 
+            logger.info("Creating fullchain certificate for apache2...")
+            stdout, stderr, code = run_command(f"sshpass -p '{host_password}' ssh {host_user}@{ip} sudo sed -i -e 's/certAutomation.key/certAutomation_test.key/g' /etc/nginx/sites-available/certapp")
+            if code != 0:
+                logger.error(f"Failed to edit config file crt: {stderr}")
+                raise Exception(f"Failed to edit config file crt: {stderr}")
+
             # Restart Apache service
             logger.info("Restarting Apache service...")
             stdout, stderr, code = run_command(f"sshpass -p '{host_password}' ssh {host_user}@{ip} 'sudo systemctl restart apache2.service'")
@@ -59,10 +76,24 @@ def deploy_cert(ip, host_user, host_password, crt, key, rootca, dns, fqdn, type)
         elif type == 'nginx':
             # Concatenate certificate and root CA for Nginx
             logger.info("Creating fullchain certificate for Nginx...")
-            stdout, stderr, code = run_command(f"sshpass -p '{host_password}' ssh {host_user}@{ip} cat {fqdn}.crt IntelSHA256RootCA.crt > fullchain.crt")
+            stdout, stderr, code = run_command(f"sshpass -p '{host_password}' ssh {host_user}@{ip} cat {fqdn}_test.crt IntelSHA256RootCA.crt > fullchain_test.crt")
             if code != 0:
                 logger.error(f"Failed to create fullchain certificate: {stderr}")
                 raise Exception(f"Failed to create fullchain certificate: {stderr}")
+            
+            # edit config file key 
+            logger.info("Creating fullchain certificate for Nginx...")
+            stdout, stderr, code = run_command(f"sshpass -p '{host_password}' ssh {host_user}@{ip} sudo sed -i -e 's/certAutomation_test.key/certAutomation.key/g' /etc/nginx/sites-available/certapp")
+            if code != 0:
+                logger.error(f"Failed to edit config file key: {stderr}")
+                raise Exception(f"Failed to edit config file key: {stderr}")
+            
+            # edit config file crt 
+            logger.info("Creating fullchain certificate for Nginx...")
+            stdout, stderr, code = run_command(f"sshpass -p '{host_password}' ssh {host_user}@{ip} sudo sed -i -e 's/certAutomation.key/certAutomation_test.key/g' /etc/nginx/sites-available/certapp")
+            if code != 0:
+                logger.error(f"Failed to edit config file crt: {stderr}")
+                raise Exception(f"Failed to edit config file crt: {stderr}")
 
             # Restart Nginx service
             logger.info("Restarting Nginx service...")
