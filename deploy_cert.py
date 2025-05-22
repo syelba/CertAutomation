@@ -5,7 +5,7 @@ import time
 from loguru import logger
 from datetime import datetime
 load_dotenv()
-
+import vcert_commends
 
 
 # Configure Loguru logging
@@ -110,10 +110,42 @@ def deploy_cert(ip, host_user, host_password, crt, key, rootca, dns, fqdn, type)
         logger.info("Checking status code and SSL expiry...")
         if getStatusCode(dns) and get_ssl_expiry() > 30:
             logger.info("Certificate deployed successfully.")
+            prod = True
+            if type == 'apache2':
+                rename_cert = vcert_commends.edit_conf_crt(ip='192.168.1.2',host_user='localhost',host_password='exist',prod=prod)
+                run_command(rename_cert)
+                rename_ca = vcert_commends.edit_conf_crt(ip='192.168.1.2',host_user='localhost',host_password='exist',prod=prod)
+                run_command(rename_ca)
+                rename_key = vcert_commends.edit_conf_ca(ip='192.168.1.2',host_user='localhost',host_password='exist',prod=prod)
+                run_command(rename_key)
+                run_command(f"sshpass -p '{host_password}' ssh {host_user}@{ip} 'sudo systemctl restart apach2.service'")
+            elif type == 'nginx':
+                rename_cert = vcert_commends.edit_conf_crt(ip='192.168.1.2',host_user='localhost',host_password='exist',prod=prod)
+                run_command(rename_cert)
+                rename_key = vcert_commends.edit_conf_ca(ip='192.168.1.2',host_user='localhost',host_password='exist',prod=prod)
+                run_command(rename_key)
+                run_command(f"sshpass -p '{host_password}' ssh {host_user}@{ip} 'sudo systemctl restart nginx.service'")
             return "Certificate deployed successfully"
         else:
-            logger.error("Certificate deployment failed: Status code or SSL expiry check failed.")
-            send_email_with_error_log()
+            prod = False
+            if type == 'apache2':
+                rename_cert = vcert_commends.edit_conf_crt(ip='192.168.1.2',host_user='localhost',host_password='exist')
+                run_command(rename_cert)
+                rename_ca = vcert_commends.edit_conf_crt(ip='192.168.1.2',host_user='localhost',host_password='exist')
+                run_command(rename_ca)
+                rename_key = vcert_commends.edit_conf_ca(ip='192.168.1.2',host_user='localhost',host_password='exist')
+                run_command(rename_key)
+                run_command(f"sshpass -p '{host_password}' ssh {host_user}@{ip} 'sudo systemctl restart apach2.service'")
+                logger.error("Certificate deployment failed: Status code or SSL expiry check failed.")
+                send_email_with_error_log()
+            elif type == 'nginx':
+                rename_cert = vcert_commends.edit_conf_crt(ip='192.168.1.2',host_user='localhost',host_password='exist')
+                run_command(rename_cert)
+                rename_ca = vcert_commends.edit_conf_crt(ip='192.168.1.2',host_user='localhost',host_password='exist')
+                run_command(rename_key)
+                run_command(f"sshpass -p '{host_password}' ssh {host_user}@{ip} 'sudo systemctl restart nginx.service'")
+                logger.error("Certificate deployment failed: Status code or SSL expiry check failed.")
+                send_email_with_error_log()
             return "Certificate deployment failed"
 
     except Exception as e:
