@@ -54,3 +54,5 @@ def edit_conf_key(ip,host_user,host_password,prod = False):
         return f"sshpass -p '{host_password}' ssh {host_user}@{ip} sudo sed -i -e 's/certAutomation{test}.key/certAutomation.key/g' /etc/nginx/sites-available/certapp && sudo mv certAutomation{test}.key certAutomation.key"
     
 
+def restart_service(ip,host_user,host_password,method):
+    return f"sshpass -p '{host_password}' ssh {host_user}@{ip} 'sudo systemctl restart {method}.service'"
