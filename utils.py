@@ -24,47 +24,29 @@ from email import encoders
 
 load_dotenv()
 
-def run_command(command_str, shell=True, timeout=10):
-    """
-    Executes a system command where arguments are comma-separated.
-
-    :param command_str: A string with command arguments separated by commas (e.g., "ls,-l").
-    :param shell: Whether to execute the command through the shell (default: False).
-    :param timeout: Max time (in seconds) to wait for command completion.
-    :return: A tuple (stdout, stderr, return_code)
-    """
-    # Split command by comma and remove extra spaces
-    command_list = [arg.strip() for arg in command_str.split(",")]
-
+def run_command(cmd):
+    logger.info(f"Command that was run: {cmd}")
     try:
-        result = subprocess.run(
-            command_list,
-            shell=shell,
-            text=True,
-            capture_output=True,
-            timeout=timeout,
-            check=False  # Avoid auto-raising errors, handle them manually
-        )
+        process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
+        stdout, stderr = process.communicate(input="\n\n")
+        return_code = process.returncode
 
-        return result.stdout.strip(), result.stderr.strip(), result.returncode
+        if return_code == 0:
+            logger.info("Command was successful")
+        else:
+            logger.error(f"Error: {stderr.strip()}")
 
-    except subprocess.TimeoutExpired:
-        return None, "Error: Command timed out", -1
-
-    except FileNotFoundError:
-        return None, "Error: Command not found", -2
+        return stdout.strip(), stderr.strip(), return_code
 
     except Exception as e:
-        return None, f"Error: {str(e)}", -3
+        logger.error(f"Exception: {e}")
+        return None, f"Exception: {e}", -1
 
 
 async def execute_command(hostname, username, password,command):
-    async with asyncssh.connect(hostname, username = username,password=password,known_hosts=None) as connection:
-        result = await connection.run(command)
-        return result.stdout
-
-
-
+    async with asyncssh.connect(hostname, username = username,password=password,known_hosts=None) as conn:
+        result = await conn.run(command)
+        return result.stdout, result.stderr, result.exit_status
 
 
 
