@@ -9,9 +9,11 @@ def ssl_expiry(domain, port):
     echo $((diff / 86400))
     """
 
+#sudo vcert gencsr --cn elitpts41.iil.intel.com -o Intel --ou CCG -l PTK --st Israel -c IL --key-size 4096 --key-file elitpts41.iil.intel.com.key --csr-file elitpts41.iil.intel.com.csr
 def gen_csr(fqdn, city, state, country, dst):
-    return f'sudo vcert gencsr --cn {fqdn} -o Intel --ou CCG -l {city} --st {state} -c {country} ' \
-           f'--key-size 4096 --key-file {dst}/{fqdn}/{fqdn}.key --csr-file {dst}{fqdn}/{fqdn}.csr'
+    return f'sudo vcert gencsr --cn {fqdn} -o Intel --ou CCG -l {city} --st {state} \
+            -c {country} --key-size 4096 --key-file {dst}/{fqdn}/{fqdn}.key --csr-file {dst}{fqdn}/{fqdn}.csr'
+
 
 def windows_crt_renew(token, venafiURL, fqdn, id, dst, pfxpassword):
     return f'sudo vcert renew -t {token} -u {venafiURL} --file {dst}/{fqdn}/{fqdn}.pfx ' \
@@ -29,12 +31,12 @@ def pickup_apache_nginx(token, venafiURL, fqdn, id, dst):
            f'--cert-file {dst}{fqdn}/{fqdn}.crt --chain-file {dst}{fqdn}/IntelSHA256RootCA.crt'
 
 
-def edit_conf_crt(ip,host_user,host_password,prod = False):
+def edit_conf_crt(prod = False):
     test = '_test'
     if prod:
-        return f"sshpass -p '{host_password}' ssh {host_user}@{ip} sudo sed -i -e 's/certAutomation.key/certAutomation{test}.key/g' /etc/nginx/sites-available/certapp"
+        return f"sudo sed -i -e 's/certAutomation.key/certAutomation{test}.key/g' /etc/nginx/sites-available/certapp"
     else:
-        return f"sshpass -p '{host_password}' ssh {host_user}@{ip} sudo sed -i -e 's/certAutomation{test}.key/certAutomation.key/g' /etc/nginx/sites-available/certapp && sudo mv certAutomation{test}.key certAutomation.crt"
+        return f"sudo sed -i -e 's/certAutomation{test}.key/certAutomation.key/g' /etc/nginx/sites-available/certapp && sudo mv certAutomation{test}.key certAutomation.crt"
     
 
 
@@ -49,10 +51,38 @@ def edit_conf_ca(ip,host_user,host_password,prod = False):
 def edit_conf_key(ip,host_user,host_password,prod = False):
     test = '_test'
     if prod:
-        return f"sshpass -p '{host_password}' ssh {host_user}@{ip} sudo sed -i -e 's/certAutomation.key/certAutomation{test}.key/g' /etc/nginx/sites-available/certapp"
+        return f"sudo sed -i -e 's/certAutomation.key/certAutomation{test}.key/g' /etc/nginx/sites-available/certapp"
     else:
-        return f"sshpass -p '{host_password}' ssh {host_user}@{ip} sudo sed -i -e 's/certAutomation{test}.key/certAutomation.key/g' /etc/nginx/sites-available/certapp && sudo mv certAutomation{test}.key certAutomation.key"
+        return f"sudo sed -i -e 's/certAutomation{test}.key/certAutomation.key/g' /etc/nginx/sites-available/certapp && sudo mv certAutomation{test}.key certAutomation.key"
     
 
-def restart_service(ip,host_user,host_password,method):
-    return f"sshpass -p '{host_password}' ssh {host_user}@{ip} 'sudo systemctl restart {method}.service'"
+
+def restart_service(method):
+    return f"sudo systemctl restart {method}.service"
+
+def full_chain_file(fqdn):
+    return f"cat {fqdn}_test.crt IntelSHA256RootCA.crt > fullchain_test.crt"
+
+
+def mov_to_opt(method,fqdn):
+    if method == "apach2":
+        return f"sudo mv {fqdn}_test.crt /opt/cert/. &&"\
+            f"sudo mv {fqdn}_test.key /opt/cert/. &&"\
+            f"sudo mv IntelSHA256RootCA_test.crt /opt/cert/. "
+    else:
+        return  f"sudo mv fullchain_test.crt /opt/cert/. &&"\
+                f"sudo mv {fqdn}_test.key /opt/cert/. &&"\
+                f"sudo mv IntelSHA256RootCA_test.crt /opt/cert/. "
+    
+
+
+#use must provide conf path , and path for crt location 
+def move_to_path(path,fqdn,method):
+    if method == "apach2":
+        return f"sudo mv {fqdn}_test.crt {path}/. &&"\
+                f"sudo mv {fqdn}_test.key {path}/. &&"\
+                f"sudo mv IntelSHA256RootCA_test.crt {path}/. "
+    else:
+        return  f"sudo mv fullchain_test.crt {path}/. &&"\
+                f"sudo mv {fqdn}_test.key {path}/. &&"\
+                f"sudo mv IntelSHA256RootCA_test.crt {path}/. "
