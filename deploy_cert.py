@@ -7,6 +7,9 @@ from datetime import datetime
 load_dotenv()
 import vcert_commends
 import os.path
+import asyncssh
+import asyncio
+
 
 # Configure Loguru logging
 log_filename = f"log_deploy_{datetime.now().strftime('%H-%M_%d-%m-%Y')}.log"
@@ -25,7 +28,7 @@ logger.add(lambda msg: print(msg, end=""), level="INFO")
 
 
 class CertificateDeployer:
-    def __init__(self, ip, host_user, host_password, crt, key, rootca, dns, fqdn, server_type):
+    def __init__(self, ip, host_user, host_password, crt, key, rootca, dns, fqdn, method):
         self.ip = ip
         self.host_user = host_user
         self.host_password = host_password
@@ -34,7 +37,7 @@ class CertificateDeployer:
         self.rootca = rootca
         self.dns = dns
         self.fqdn = fqdn
-        self.server_type = server_type
+        self.method = method
         self.path = os.getenv('dst') + fqdn
         if os.path.isdir(self.path):
             logger.info(f'path {self.path} is valid')
@@ -44,52 +47,57 @@ class CertificateDeployer:
             print(f'the path {self.path} is not valid')
 
     def _run(self, command):
-        return run_command(command)
+        return asyncio.run(execute_command(hostname=self.ip,username=self.host_user,password=self.host_password,command=command))
 
     def _copy_file(self, src_file, dest_file):
         command = f"sshpass -p '{self.host_password}' scp {src_file} {self.host_user}@{self.ip}:{dest_file}"
-        stdout, stderr, code = self._run(command)
-        if code != 0:
-            raise Exception(f"Failed to copy {os.path.basename(src_file)}: {stderr}")
+        res = self._run(command)
+        return res
 
-    def _edit_config(self, search, replace):
-        command = f"sshpass -p '{self.host_password}' ssh {self.host_user}@{self.ip} sudo sed -i -e 's/{search}/{replace}/g' /etc/nginx/sites-available/certapp"
-        command = vcert_commends.
-        stdout, stderr, code = self._run(command)
-        if code != 0:
-            raise Exception(f"Failed to edit config: {stderr}")
+    def _edit_config(self, search, replace,conf_path):
+        command = f"sudo sed -i -e 's/{search}/{replace}/g' {conf_path}"
+        #command = vcert_commends.
+        return  self._run(command)
+        
 
-    def _restart_service(self, service):
-        command = vcert_commends.restart_service(self.ip,self.host_user,self.host_password,service)
-        stdout, stderr, code = self._run(command)
-        if code != 0:
-            logger.error(f"Failed to restart {service}: {stderr}")
-            raise Exception(f"Failed to restart {service}: {stderr}")
+    def restart_service(self):
+        build_commend = vcert_commends.restart_service(self.method)
+        res = asyncio.run(execute_command(hostname=self.ip,username=self.host_user,password=self.host_password,command=build_commend))
+        return res
 
     def _post_deploy_actions(self, prod):
         import vcert_commends
-        rename_cert = vcert_commends.edit_conf_crt(ip='192.168.1.2', host_user='localhost', host_password='exist', prod=prod)
-        rename_ca = vcert_commends.edit_conf_crt(ip='192.168.1.2', host_user='localhost', host_password='exist', prod=prod)
-        rename_key = vcert_commends.edit_conf_ca(ip='192.168.1.2', host_user='localhost', host_password='exist', prod=prod)
+        rename_cert = vcert_commends.edit_conf_crt(prod=prod)
+        rename_ca = vcert_commends.edit_conf_key(prod=prod)
+        rename_key = vcert_commends.edit_conf_ca(prod=prod)
         self._run(rename_cert)
         self._run(rename_ca)
         self._run(rename_key)
-        self._restart_service("apache2" if self.server_type == "apache2" else "nginx")
+        self.restart_service("apache2" if self.method == "apache2" else "nginx")
 
     def deploy_apache(self):
         logger.info("Deploying to Apache2...")
-        self._edit_config('certAutomation_test.key', 'certAutomation.key')
-        self._edit_config('certAutomation.key', 'certAutomation_test.key')
+        self._edit_config(f'{self.fqdn}_test.crt', f'{self.fqdn}.crt')
+        self._edit_config(f'{self.fqdn}_test.crt', f'{self.fqdn}.crt')
+        cmd = vcert_commends.move_to_path(self.path,self.fqdn,method="apache2")
+        stdout, stderr, code = self._run(cmd)
+        if code != 0:
+            raise Exception(f"move certs files to path {stderr}")
+        self._edit_config(f'{self.fqdn}.key', f'{self.fqdn}.key')
         self._restart_service('apache2')
 
     def deploy_nginx(self):
         logger.info("Creating fullchain certificate for Nginx...")
-        cmd = f"sshpass -p '{self.host_password}' ssh {self.host_user}@{self.ip} 'cat {self.fqdn}_test.crt IntelSHA256RootCA.crt > fullchain_test.crt'"
-        stdout, stderr, code = self._run(cmd)
+        cmd = vcert_commends.full_chain_file(self.fqdn)
+        res = self._run(cmd)
         if code != 0:
             raise Exception(f"Failed to create fullchain certificate: {stderr}")
-        self._edit_config('certAutomation_test.key', 'certAutomation.key')
-        self._edit_config('certAutomation.key', 'certAutomation_test.key')
+        self._edit_config('fullchain_test.key', 'fullchain.key')
+        self._edit_config(f'{self.fqdn}.key', f'{self.fqdn}.key')
+        cmd = vcert_commends.move_to_path(self.path,self.fqdn,method="nginx")
+        stdout, stderr, code = self._run(cmd)
+        if code != 0:
+            raise Exception(f"move certs files to path {stderr}")
         self._restart_service('nginx')
 ######################################################################################################################################################################
     def deploy(self):
@@ -103,7 +111,7 @@ class CertificateDeployer:
         """
         try:
             logger.info(f"Starting certificate deployment for {self.fqdn} on {self.ip}")
-
+            #copy to user 
             logger.info("Copying certificate...")
             self._copy_file(f"{self.path}/{self.fqdn}_test.crt", f"/home/{self.host_user}/")
             logger.info("Copying key...")
@@ -111,13 +119,14 @@ class CertificateDeployer:
             logger.info("Copying root CA...")
             self._copy_file(f"{self.path}/IntelSHA256RootCA.crt", f"/home/{self.host_user}/")
 
-            if self.server_type == 'apache2':
+            if self.method == 'apache2':
                 self.deploy_apache()
-            elif self.server_type == 'nginx':
+            elif self.method == 'nginx':
                 self.deploy_nginx()
             else:
-                raise Exception(f"Unsupported server type: {self.server_type}")
+                raise Exception(f"Unsupported server type: {self.method}")
 
+            #move to opt/crt
             logger.info("Checking status code and SSL expiry...")
             if getStatusCode(self.dns) and get_ssl_expiry() > 30:
                 logger.info("Certificate deployed successfully.")
@@ -133,3 +142,24 @@ class CertificateDeployer:
             logger.error(f"An error occurred during deployment: {e}")
             send_email_with_error_log()
             return "Certificate deployment failed"
+
+
+
+
+
+
+
+
+
+#check copy file
+target_path = "/home/cert_test/."
+target_conf = "/etc/apache2/conf-available/conf"
+fqdn = ""
+
+runner = CertificateDeployer(ip="",host_user="",host_password="",fqdn=fqdn,dns=fqdn,method="apache2",crt=None,key=None,rootca=None)
+
+print(runner.restart_service())
+
+
+
+
