@@ -1,4 +1,4 @@
-from utils import run_command, send_email_with_error_log,get_ssl_expiry,getStatusCode,execute_command
+from utils import run_command,scp_upload, send_email_with_error_log,get_ssl_expiry,getStatusCode,execute_command
 import os 
 from dotenv import load_dotenv
 import time
@@ -47,26 +47,36 @@ class CertificateDeployer:
             print(f'the path {self.path} is not valid')
 
     def _run(self, command):
+        """
+        execute any command on target machine
+        """
         return asyncio.run(execute_command(hostname=self.ip,username=self.host_user,password=self.host_password,command=command))
 
     def _copy_file(self, src_file, dest_file):
-        command = f"sshpass -p '{self.host_password}' scp {src_file} {self.host_user}@{self.ip}:{dest_file}"
-        res = self._run(command)
-        return res
+        """
+        upload crt file/any file to server
+        """
+        #command = f"sshpass -p '{self.host_password}' scp {src_file} {self.host_user}@{self.ip}:{dest_file}"
+        scp_upload(self.ip,self.host_user,self.host_password,local_path=src_file,remote_path=dest_file)
 
     def _edit_config(self, search, replace,conf_path):
+        """
+        edit target conf file
+        """
         command = f"sudo sed -i -e 's/{search}/{replace}/g' {conf_path}"
         #command = vcert_commends.
         return  self._run(command)
         
 
     def restart_service(self):
+        """
+        restart the service on target machine , by method running on web server
+        """
         build_commend = vcert_commends.restart_service(self.method)
         res = asyncio.run(execute_command(hostname=self.ip,username=self.host_user,password=self.host_password,command=build_commend))
         return res
 
     def _post_deploy_actions(self, prod):
-        import vcert_commends
         rename_cert = vcert_commends.edit_conf_crt(prod=prod)
         rename_ca = vcert_commends.edit_conf_key(prod=prod)
         rename_key = vcert_commends.edit_conf_ca(prod=prod)
@@ -75,30 +85,32 @@ class CertificateDeployer:
         self._run(rename_key)
         self.restart_service("apache2" if self.method == "apache2" else "nginx")
 
+
     def deploy_apache(self):
+        """
+        this is step after coping the files to the server 
+        1.for apache2 : creating 1 file from rootCA and crt file 
+        2. edit conf file and test the crt
+        """ 
         logger.info("Deploying to Apache2...")
         self._edit_config(f'{self.fqdn}_test.crt', f'{self.fqdn}.crt')
-        self._edit_config(f'{self.fqdn}_test.crt', f'{self.fqdn}.crt')
-        cmd = vcert_commends.move_to_path(self.path,self.fqdn,method="apache2")
-        stdout, stderr, code = self._run(cmd)
-        if code != 0:
-            raise Exception(f"move certs files to path {stderr}")
-        self._edit_config(f'{self.fqdn}.key', f'{self.fqdn}.key')
-        self._restart_service('apache2')
+        self._edit_config(f'IntelSHA256RootCA_test.crt', f'IntelSHA256RootCA.crt')
+        self._edit_config(f'{self.fqdn}_test.key', f'{self.fqdn}.key')
+        self.restart_service('apache2')
+
 
     def deploy_nginx(self):
+        """
+        this is step after coping the files to the server 
+        1.for nginx : creating 1 file from rootCA and crt file 
+        2. edit conf file and test the crt
+        """ 
         logger.info("Creating fullchain certificate for Nginx...")
         cmd = vcert_commends.full_chain_file(self.fqdn)
         res = self._run(cmd)
-        if code != 0:
-            raise Exception(f"Failed to create fullchain certificate: {stderr}")
         self._edit_config('fullchain_test.key', 'fullchain.key')
         self._edit_config(f'{self.fqdn}.key', f'{self.fqdn}.key')
-        cmd = vcert_commends.move_to_path(self.path,self.fqdn,method="nginx")
-        stdout, stderr, code = self._run(cmd)
-        if code != 0:
-            raise Exception(f"move certs files to path {stderr}")
-        self._restart_service('nginx')
+        self.restart_service('nginx')
 ######################################################################################################################################################################
     def deploy(self):
         """
@@ -142,24 +154,3 @@ class CertificateDeployer:
             logger.error(f"An error occurred during deployment: {e}")
             send_email_with_error_log()
             return "Certificate deployment failed"
-
-
-
-
-
-
-
-
-
-#check copy file
-target_path = "/home/cert_test/."
-target_conf = "/etc/apache2/conf-available/conf"
-fqdn = ""
-
-runner = CertificateDeployer(ip="",host_user="",host_password="",fqdn=fqdn,dns=fqdn,method="apache2",crt=None,key=None,rootca=None)
-
-print(runner.restart_service())
-
-
-
-
