@@ -84,7 +84,7 @@ def add_certificate():
     data.setdefault("state", "")
     data.setdefault("Country", "IL")
     data.setdefault("host_user", "")
-    data.setdefault("host_password", "IL")
+    data.setdefault("host_password", "")
     data.setdefault("cert_path", "")
     data.setdefault("key", "")
     data.setdefault("rootca", "")
