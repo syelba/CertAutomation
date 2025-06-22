@@ -30,6 +30,7 @@ class CertificateModel(BaseModel):
     cert_path : Optional[str] = Field(None, description="cert file path")
     key : Optional[str] = Field(None, description="key file path")
     rootca : Optional[str] = Field(None, description="rootca file path")
+    conf_file : Optional[str] = Field(None, description="full conf file path")
     approve : Optional[str] = Field(None, description="approve to dyploy Yes/No")
 
 
