@@ -28,7 +28,7 @@ logger.add(lambda msg: print(msg, end=""), level="INFO")
 
 
 class CertificateDeployer:
-    def __init__(self, ip, host_user, host_password, crt, key, rootca, dns, fqdn, method):
+    def __init__(self, ip, host_user, host_password,conf_path, crt, key, rootca, dns, fqdn, method):
         self.ip = ip
         self.host_user = host_user
         self.host_password = host_password
@@ -38,6 +38,7 @@ class CertificateDeployer:
         self.dns = dns
         self.fqdn = fqdn
         self.method = method
+        self.conf_path = conf_path
         self.path = os.getenv('dst') + fqdn
         if os.path.isdir(self.path):
             logger.info(f'path {self.path} is valid')
@@ -63,7 +64,7 @@ class CertificateDeployer:
         """
         edit target conf file
         """
-        command = f"sudo sed -i -e 's/{search}/{replace}/g' {conf_path}"
+        command = f"sudo sed -i -e 's/{search}/{replace}/g' {self.conf_path}"
         #command = vcert_commends.
         return  self._run(command)
         
@@ -109,7 +110,7 @@ class CertificateDeployer:
         cmd = vcert_commends.full_chain_file(self.fqdn)
         res = self._run(cmd)
         self._edit_config('fullchain_test.key', 'fullchain.key')
-        self._edit_config(f'{self.fqdn}.key', f'{self.fqdn}.key')
+        self._edit_config(f'{self.fqdn}_test.key', f'{self.fqdn}.key')
         self.restart_service('nginx')
 ######################################################################################################################################################################
     def deploy(self):
@@ -125,11 +126,11 @@ class CertificateDeployer:
             logger.info(f"Starting certificate deployment for {self.fqdn} on {self.ip}")
             #copy to user 
             logger.info("Copying certificate...")
-            self._copy_file(f"{self.path}/{self.fqdn}_test.crt", f"/home/{self.host_user}/")
+            self._copy_file(f"{self.path}/{self.fqdn}_test.crt", f"{self.crt}/")
             logger.info("Copying key...")
-            self._copy_file(f"{self.path}/{self.fqdn}_test.key", f"/home/{self.host_user}/")
+            self._copy_file(f"{self.path}/{self.fqdn}_test.key", f"{self.rootca}/")
             logger.info("Copying root CA...")
-            self._copy_file(f"{self.path}/IntelSHA256RootCA.crt", f"/home/{self.host_user}/")
+            self._copy_file(f"{self.path}/IntelSHA256RootCA.crt", f"{self.key}/")
 
             if self.method == 'apache2':
                 self.deploy_apache()
