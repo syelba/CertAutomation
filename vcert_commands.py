@@ -61,7 +61,7 @@ def restart_service(method):
     return f"sudo systemctl restart {method}.service"
 
 def full_chain_file(fqdn):
-    return f"cat {fqdn}_test.crt IntelSHA256RootCA.crt > fullchain_test.crt"
+    return  f"cat {fqdn}_test.crt IntelSHA256RootCA.crt > fullchain_test.crt"
 
 
 def mov_to_opt(method,fqdn):
