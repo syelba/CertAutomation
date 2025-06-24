@@ -39,7 +39,7 @@ DBcollectionName = os.getenv("CollectionName")
 
 readMongo = Mongo()
 servers = readMongo.Collection2List()
-token = get_venafi_token()
+
 # Configure Loguru logging
 log_filename = f"log_renew_{datetime.now().strftime('%H-%M_%d-%m-%Y')}.log"
 logger.remove()
@@ -56,189 +56,207 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 
-def generate_CSR_Key(fqdn, city, state, Country, dst):
-    try:
-        logger.info(f"{dst} for generating CSR")
-        cmd = vcert_commends.gen_csr(fqdn, city, state, Country, dst)
-        logger.info(f"Command that was run: {cmd}")
-
-        # Execute the command using run_command
-        stdout, stderr, exit_status = run_command(cmd)
-
-        if exit_status == 0:
-            logger.info(f"CSR and key generated successfully for {fqdn}")
-            return stdout.strip()
-        else:
-            logger.error(f"Error generating CSR for {fqdn}: {stderr.strip()}")
-            return f"Error: {stderr.strip()}"
-    except Exception as e:
-        logger.error(f"Exception during CSR generation for {fqdn}: {e}")
-        return f"Exception: {e}"
 
 
-def renewCert(id, fqdn, type=None, pfxPassword=None, cmd=None):
-    try:
-        # Determine the command to run based on the type
-        if type == "windows":
-            command = vcert_commends.windows_crt_renew(cmd['token'], cmd['venafiURL'], fqdn, id, cmd['dst'], pfxPassword)
-        elif type == "apache_nginx":
-            command = vcert_commends.renew_apache_nginx(cmd['token'], cmd['venafiURL'], fqdn, id, cmd['dst'])
-        elif type == "netapp":
-            command = vcert_commends.renew_netapp(cmd['token'], cmd['venafiURL'], fqdn, id, cmd['dst'])
-        else:
-            logger.error(f"Unsupported certificate type: {type}")
-            return f"Unsupported certificate type: {type}"
-        logger.info(f"Command that was run: {command}")
-        output, exit_status = run_command(command)
-        if exit_status == 0:
-            logger.info(f"{type} certs created for {fqdn}")
-            return output.strip()
-        else:
-            logger.error(f"{type} Error: Command failed with exit status {exit_status} for {fqdn}")
-            return f"Error: Command failed with exit status {exit_status}"
-    except Exception as e:
-        logger.error(f"{type} Error: {e} for {fqdn}")
-        return f"Exception: {e}"
 
-    
-def pickup(id, fqdn):
-    cmd = f'sudo vcert pickup -u {venafiURL} -t {token} --pickup-id "{id}" --cert-file {dst}{fqdn}/{fqdn}.crt --chain-file {dst}{fqdn}/IntelSHA256RootCA.crt'
-    logger.info(f"Command that was run: {cmd}")
-    try:
-        process = os.popen(cmd)
-        output = process.read()
-        exit_status = process.close()
-        if exit_status is None:
-            logger.success(f"pickup command succeeded for {fqdn}")
-            return output.strip()
-        else:
-            logger.warning(f"pickup command failed with exit status {exit_status} for {fqdn}")
-            return f"Error: Command failed with exit status {exit_status}"
-    except Exception as e:
-        logger.error(f"pickup Error: {e} for {fqdn}")
-        return f"Exception: {e}"
+class CertificateManager:
+    def __init__(self,server=None,servers=None):
+        self.venafi_url = os.getenv('venafiURL')
+        self.token = get_venafi_token()
+        self.dst = os.getenv('dst')
+        self.servers = readMongo.Collection2List()
+        self.server = server
+        
 
-def generate_csr_from_netapp(fqdn):
-    """
-    Connects to a NetApp device, generates a CSR, extracts the CSR and private key, saves them to files,
-    and returns the data as a dictionary.
-    Args:
-        fqdn (str): Fully qualified domain name for the certificate.
-    Returns:
-        dict: A dictionary with 'csr', 'key', 'csr_file', and 'key_file' or an 'error' key if failure occurs.
-    """
-    logging.info(f"Starting CSR generation for FQDN: {fqdn}")
-    netapp_device = {
-        'device_type': 'terminal_server',
-        'ip': os.getenv('NETAPP_IP'),
-        'username': os.getenv('NETAPP_USER'),
-        'password': os.getenv('NETAPP_PASSWORD'),
-    }
-    try:
-        from netmiko import ConnectHandler  # Only import here to prevent error in offline env
-        logging.info("Attempting to connect to NetApp device.")
-        net_connect = ConnectHandler(**netapp_device)
-        logging.info("Connected successfully.")
-
-        output = net_connect.send_command(
-            f'security certificate generate-csr {fqdn} -algorithm RSA -hash-function SHA256 -size 4096 -organization Intel -unit "CCG"'
-        )
-        csr_match = re.search(r'(-----BEGIN CERTIFICATE REQUEST-----.*?-----END CERTIFICATE REQUEST-----)', output, re.DOTALL)
-        key_match = re.search(r'(-----BEGIN PRIVATE KEY-----.*?-----END PRIVATE KEY-----)', output, re.DOTALL)
-
-        if csr_match and key_match:
-            csr = csr_match.group(1)
-            key = key_match.group(1)
-
-            csr_filename = f"{dst}/{fqdn}/{fqdn}.csr"
-            key_filename = f"{dst}/{fqdn}/{fqdn}.key"
-
-            with open(csr_filename, "w") as csr_file:
-                csr_file.write(csr + "\n")
-                logging.info(f"CSR saved to file: {csr_filename}")
-
-            with open(key_filename, "w") as key_file:
-                key_file.write(key + "\n")
-                logging.info(f"Private key saved to file: {key_filename}")
-
-            logging.info("CSR generation completed successfully.")
-            return {
-                "csr": csr,
-                "key": key,
-                "csr_file": csr_filename,
-                "key_file": key_filename
-            }
-
-        else:
-            logging.error("Failed to parse CSR or private key from device output.")
-            return {"error": "Failed to parse CSR or private key."}
-
-    except Exception as e:
-        logging.exception("An error occurred during CSR generation.")
-        return {"error": str(e)}
-
-    finally:
+    def generate_csr_key(self, fqdn, city, state, country):
         try:
-            net_connect.disconnect()
-            logging.info("Disconnected from NetApp device.")
-        except:
-            logging.warning("Failed to disconnect from NetApp device (possibly never connected).")
+            logger.info(f"{self.dst} for generating CSR")
+            cmd = vcert_commends.gen_csr(fqdn, city, state, country, self.dst)
+            logger.info(f"Command that was run: {cmd}")
 
-def renewCertNetapp(id, fqdn):
-    cmd = f'sudo vcert renew -t {token} -u {venafiURL} --file {dst}/{fqdn}/{fqdn}.pem -id "{id}" --csr file:{dst}/{fqdn}/{fqdn}.csr'
-    logger.info(f"Command that was run: {cmd}")
-    try:
-        process = os.popen(cmd)
-        time.sleep(2)
-        output = process.read()
-        exit_status = process.close()
-        if exit_status is None:
-            logger.success(f"renewCertNetapp certs created for {fqdn}")
-            return output.strip()
-        else:
-            logger.error(f"renewCertNetappx Error: Command failed with exit status {exit_status} for {fqdn}")
-            return f"Error: Command failed with exit status {exit_status}"
-    except Exception as e:
-        logger.error(f"renewCertNetapp Error: {e} for {fqdn}")
-        return f"Exception: {e}"   
+            stdout, stderr, exit_status = run_command(cmd)
 
-def get_cert_to_test():
-    if not dst:
-        logger.error("Environment variable 'dst' is not set.")
-        raise EnvironmentError("Environment variable 'dst' is not set.")
+            if exit_status == 0:
+                logger.info(f"CSR and key generated successfully for {fqdn}")
+                return stdout.strip()
+            else:
+                logger.error(f"Error generating CSR for {fqdn}: {stderr.strip()}")
+                return f"Error: {stderr.strip()}"
+        except Exception as e:
+            logger.error(f"Exception during CSR generation for {fqdn}: {e}")
+            return f"Exception: {e}"
 
-    for server in servers:
-        if get_ssl_expiry(server.fqdn) < config.days_remain:
-            fqdn = server.fqdn
-            folder_path = os.path.join(dst, fqdn)
+    def renew_cert(self, id, fqdn, method, pfx_password=None):
+        try:
+            if method == 'IIS':
+                command = vcert_commends.windows_crt_renew(token=self.token, venafiURL=self.venafi_url, fqdn=fqdn, id = id, dst=self.dst, pfxpassword=pfx_password)
+            elif method == 'nginx' or method == 'apache2':
+                command = vcert_commends.renew_apache_nginx(token=self.token, venafiURL=self.venafi_url, fqdn=fqdn, id = id, dst=self.dst)
+            elif method == 'netapp':
+                command = vcert_commends.renew_netapp(token=self.token, venafiURL=self.venafi_url, fqdn=fqdn, id = id, dst=self.dst)
+            else:
+                logger.error(f"Unsupported certificate type: {method}")
+                return f"Unsupported certificate type: {method}"
+
+            logger.info(f"Command that was run: {command}")
+            output, exit_status = run_command(command)
+
+            if exit_status == 0:
+                logger.info(f"{method} certs created for {fqdn}")
+                return output.strip()
+            else:
+                logger.error(f"Error: Command failed with exit status {exit_status} for {fqdn}")
+                return f"Error: Command failed with exit status {exit_status}"
+        except Exception as e:
+            logger.error(f"Error: {e} for {fqdn}")
+            return f"Exception: {e}"
+
+    def pickup(self, id, fqdn):
+        cmd = f'sudo vcert pickup -u {self.venafi_url} -t {self.token} --pickup-id "{id}" --cert-file {self.dst}{fqdn}/{fqdn}.crt --chain-file {self.dst}{fqdn}/IntelSHA256RootCA.crt'
+        logger.info(f"Command that was run: {cmd}")
+        try:
+            process = os.popen(cmd)
+            output = process.read()
+            exit_status = process.close()
+            if exit_status is None:
+                logger.success(f"pickup command succeeded for {fqdn}")
+                return output.strip()
+            else:
+                logger.warning(f"pickup command failed with exit status {exit_status} for {fqdn}")
+                return f"Error: Command failed with exit status {exit_status}"
+        except Exception as e:
+            logger.error(f"pickup Error: {e} for {fqdn}")
+            return f"Exception: {e}"
+
+    def generate_csr_from_netapp(self, fqdn):
+        logger.info(f"Starting CSR generation for FQDN: {fqdn}")
+        netapp_device = {
+            'device_type': 'terminal_server',
+            'ip': os.getenv('NETAPP_IP'),
+            'username': os.getenv('NETAPP_USER'),
+            'password': os.getenv('NETAPP_PASSWORD'),
+        }
+        try:
+            logger.info("Attempting to connect to NetApp device.")
+            net_connect = ConnectHandler(**netapp_device)
+            logger.info("Connected successfully.")
+
+            output = net_connect.send_command(
+                f'security certificate generate-csr {fqdn} -algorithm RSA -hash-function SHA256 -size 4096 -organization Intel -unit "CCG"'
+            )
+            csr_match = re.search(r'(-----BEGIN CERTIFICATE REQUEST-----.*?-----END CERTIFICATE REQUEST-----)', output, re.DOTALL)
+            key_match = re.search(r'(-----BEGIN PRIVATE KEY-----.*?-----END PRIVATE KEY-----)', output, re.DOTALL)
+
+            if csr_match and key_match:
+                csr = csr_match.group(1)
+                key = key_match.group(1)
+
+                csr_filename = f"{self.dst}/{fqdn}/{fqdn}.csr"
+                key_filename = f"{self.dst}/{fqdn}/{fqdn}.key"
+
+                with open(csr_filename, "w") as csr_file:
+                    csr_file.write(csr + "\n")
+                    logger.info(f"CSR saved to file: {csr_filename}")
+
+                with open(key_filename, "w") as key_file:
+                    key_file.write(key + "\n")
+                    logger.info(f"Private key saved to file: {key_filename}")
+
+                logger.info("CSR generation completed successfully.")
+                return {
+                    "csr": csr,
+                    "key": key,
+                    "csr_file": csr_filename,
+                    "key_file": key_filename
+                }
+
+            else:
+                logger.error("Failed to parse CSR or private key from device output.")
+                return {"error": "Failed to parse CSR or private key."}
+
+        except Exception as e:
+            logger.exception("An error occurred during CSR generation.")
+            return {"error": str(e)}
+
+        finally:
+            try:
+                net_connect.disconnect()
+                logger.info("Disconnected from NetApp device.")
+            except:
+                logger.warning("Failed to disconnect from NetApp device (possibly never connected).")
+
+    def renew_cert_netapp(self, id, fqdn):
+        cmd = f'sudo vcert renew -t {self.token} -u {self.venafi_url} --file {self.dst}/{fqdn}/{fqdn}.pem -id "{id}" --csr file:{self.dst}/{fqdn}/{fqdn}.csr'
+        logger.info(f"Command that was run: {cmd}")
+        try:
+            process = os.popen(cmd)
+            time.sleep(2)
+            output = process.read()
+            exit_status = process.close()
+            if exit_status is None:
+                logger.success(f"renewCertNetapp certs created for {fqdn}")
+                return output.strip()
+            else:
+                logger.error(f"renewCertNetapp Error: Command failed with exit status {exit_status} for {fqdn}")
+                return f"Error: Command failed with exit status {exit_status}"
+        except Exception as e:
+            logger.error(f"renewCertNetapp Error: {e} for {fqdn}")
+            return f"Exception: {e}"
+
+    def get_certs_to_test(self):
+        if not self.dst:
+            logger.error("Environment variable 'dst' is not set.")
+            raise EnvironmentError("Environment variable 'dst' is not set.")
+
+        for server in servers:
+            if get_ssl_expiry(server.fqdn) < config.days_remain:
+                fqdn = server.fqdn
+                folder_path = os.path.join(self.dst, fqdn)
+                logger.info(f"Checking folder: {folder_path}")
+                pickup_id = server.pickup_ID
+                method = server.method
+                stdout, stderr, code = run_command(f"ls {self.dst}")
+                if code != 0 or fqdn not in stdout.splitlines():
+                    stdout, stderr, code = run_command(f"sudo mkdir -p {folder_path}", shell=True)
+                    if code == 0:
+                        logger.info(f"Folder {folder_path} created.")
+                    else:
+                        logger.error(f"Failed to create folder {folder_path}: {stderr}")
+
+                logger.info(f"Country for {fqdn}: {server.Country}")
+                self.generate_csr_key(fqdn=fqdn, city=server.local, state=server.state, country=server.Country)
+
+                if method == "apache2":
+                    self.renew_cert(pickup_id, fqdn, type='apache2')
+                elif method == "nginx":
+                    self.renew_cert(pickup_id, fqdn, type='nginx')
+                elif method == "IIS":
+                    self.renew_cert(pickup_id, fqdn, pfx_password= server['pfxPassword', ''], type='windows')
+
+                self.pickup(id=pickup_id, fqdn=fqdn)
+
+    def get_cert_to_test(self):
+        if not self.dst:
+            logger.error("Environment variable 'dst' is not set.")
+            raise EnvironmentError("Environment variable 'dst' is not set.")
+
+        if get_ssl_expiry(self.server['fqdn']) < config.days_remain:
+            fqdn = self.server['fqdn']
+            folder_path = os.path.join(self.dst, fqdn)
             logger.info(f"Checking folder: {folder_path}")
-            pickup_id = server.pickup_ID
-            method = server.method
-            stdout, stderr, code = run_command(f"ls {dst}")
+            pickup_id = self.server['pickup-ID']
+            
+            method = self.server['method']
+            print(method)
+            stdout, stderr, code = run_command(f"ls {self.dst}")
             if code != 0 or fqdn not in stdout.splitlines():
-                stdout, stderr, code = run_command(f"sudo mkdir -p {folder_path}", shell=True)
+                stdout, stderr, code = run_command(f"sudo mkdir -p {folder_path}")
                 if code == 0:
                     logger.info(f"Folder {folder_path} created.")
                 else:
                     logger.error(f"Failed to create folder {folder_path}: {stderr}")
 
-            logger.info(f"Country for {fqdn}: {server.Country}")
-            generate_CSR_Key(fqdn=fqdn, city=server.local, state=server.state, Country=server.Country)
-
-            if method == "apache2":
-                renewCert(pickup_id, fqdn,type= 'apache2')
-            elif method == "nginx":
-                renewCert(pickup_id, fqdn, type= 'nginx')
-            elif method == "IIS":
-                renewCert(pickup_id, fqdn, pfxPassword=server.get('pfxPassword', ''),type='windows')
-            
-            pickup(id=pickup_id, fqdn=fqdn)
-
-
-
-
-
-
-if __name__ == '__main__':   
-    get_cert_to_test()
-
+            logger.info(f"Country for {fqdn}: {self.server['Country']}")
+            self.generate_csr_key(fqdn=fqdn, city=self.server['local'], state=self.server['state'], country=self.server['Country'])
+            self.renew_cert(pickup_id, fqdn, method)
+            self.pickup(id=pickup_id, fqdn=fqdn)
