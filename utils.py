@@ -49,6 +49,11 @@ async def execute_command(hostname, username, password,command):
         return result.stdout, result.stderr, result.exit_status
 
 
+async def scp_upload(hostname, username, password, local_path, remote_path):
+    async with asyncssh.connect(hostname, username=username, password=password, known_hosts=None) as conn:
+        await asyncssh.scp(local_path, (conn, remote_path))
+        print(f"Uploaded {local_path} to {hostname}:{remote_path}")
+
 
 def send_email_with_error_log(recipient_emails_str, subject, body, file_path, 
                               smtp_server=None, smtp_port=587, sender_email=None, sender_password=None):
