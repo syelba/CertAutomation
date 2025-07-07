@@ -60,7 +60,7 @@ class CertificateDeployer:
         #command = f"sshpass -p '{self.host_password}' scp {src_file} {self.host_user}@{self.ip}:{dest_file}"
         scp_upload(self.ip,self.host_user,self.host_password,local_path=src_file,remote_path=dest_file)
 
-    def _edit_config(self, search, replace,conf_path):
+    def _edit_config(self, search, replace):
         """
         edit target conf file
         """
@@ -94,9 +94,9 @@ class CertificateDeployer:
         2. edit conf file and test the crt
         """ 
         logger.info("Deploying to Apache2...")
-        self._edit_config(f'{self.fqdn}_test.crt', f'{self.fqdn}.crt')
-        self._edit_config(f'IntelSHA256RootCA_test.crt', f'IntelSHA256RootCA.crt')
-        self._edit_config(f'{self.fqdn}_test.key', f'{self.fqdn}.key')
+        self._edit_config(f'{self.fqdn}_test.crt', f'{self.fqdn}.crt',self.conf_path)
+        self._edit_config(f'IntelSHA256RootCA_test.crt', f'IntelSHA256RootCA.crt',self.conf_path)
+        self._edit_config(f'{self.fqdn}_test.key', f'{self.fqdn}.key',self.conf_path)
         self.restart_service('apache2')
 
 
@@ -155,3 +155,15 @@ class CertificateDeployer:
             logger.error(f"An error occurred during deployment: {e}")
             send_email_with_error_log()
             return "Certificate deployment failed"
+
+
+
+
+
+
+
+
+
+
+
+
