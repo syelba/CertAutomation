@@ -31,29 +31,30 @@ def pickup_apache_nginx(token, venafiURL, fqdn, id, dst):
            f'--cert-file {dst}{fqdn}/{fqdn}.crt --chain-file {dst}{fqdn}/IntelSHA256RootCA.crt'
 
 
-def edit_conf_crt(prod = False):
+def edit_conf_crt(fqdn,conf_file,prod = False):
     test = '_test'
     if prod:
-        return f"sudo sed -i -e 's/certAutomation.key/certAutomation{test}.key/g' /etc/nginx/sites-available/certapp"
+        return f"sudo sed -i -e 's/{fqdn}.crt/{fqdn}{test}.crt/g' {conf_file}"
     else:
-        return f"sudo sed -i -e 's/certAutomation{test}.key/certAutomation.key/g' /etc/nginx/sites-available/certapp && sudo mv certAutomation{test}.key certAutomation.crt"
+        return f"sudo sed -i -e 's/{fqdn}{test}.crt/{fqdn}.crt/g' {conf_file} && sudo mv {fqdn}{test}.crt {fqdn}.crt"
     
 
 
-def edit_conf_ca(ip,host_user,host_password,prod = False):
+def edit_conf_ca(ip,host_user,host_password,conf_file,prod = False):
     test = '_test'
     if prod:
-        return f"sshpass -p '{host_password}' ssh {host_user}@{ip} sudo sed -i -e 's/certAutomation.crt/certAutomation{test}.crt/g' /etc/nginx/sites-available/certapp"
+        return f"sshpass -p '{host_password}' ssh {host_user}@{ip} sudo sed -i -e 's/IntelSHA256RootCA.crt/IntelSHA256RootCA{test}.crt/g' {conf_file}"
     else:
-        return f"sshpass -p '{host_password}' ssh {host_user}@{ip} sudo sed -i -e 's/certAutomation{test}.crt/certAutomation.crt/g' /etc/nginx/sites-available/certapp && sudo mv certAutomation{test}.key certAutomation.crt"
+        return f"sshpass -p '{host_password}' ssh {host_user}@{ip} sudo sed -i -e 's/IntelSHA256RootCA{test}.crt/IntelSHA256RootCA.crt/g' {conf_file} \
+            && sudo mv IntelSHA256RootCA{test}.crt IntelSHA256RootCA.crt"
 
 
-def edit_conf_key(ip,host_user,host_password,prod = False):
+def edit_conf_key(ip,host_user,host_password,fqdn,conf_file,prod = False):
     test = '_test'
     if prod:
-        return f"sudo sed -i -e 's/certAutomation.key/certAutomation{test}.key/g' /etc/nginx/sites-available/certapp"
+        return f"sudo sed -i -e 's/{fqdn}.key/{fqdn}{test}.key/g' {conf_file}"
     else:
-        return f"sudo sed -i -e 's/certAutomation{test}.key/certAutomation.key/g' /etc/nginx/sites-available/certapp && sudo mv certAutomation{test}.key certAutomation.key"
+        return f"sudo sed -i -e 's/{fqdn}{test}.key/{fqdn}.key/g' {conf_file} && sudo mv {fqdn}{test}.key {fqdn}.key"
     
 
 
