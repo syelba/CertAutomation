@@ -12,7 +12,7 @@ def ssl_expiry(domain, port):
 #sudo vcert gencsr --cn elitpts41.iil.intel.com -o Intel --ou CCG -l PTK --st Israel -c IL --key-size 4096 --key-file elitpts41.iil.intel.com.key --csr-file elitpts41.iil.intel.com.csr
 def gen_csr(fqdn, city, state, country, dst):
     return f'sudo vcert gencsr --cn {fqdn} -o Intel --ou CCG -l {city} --st {state} \
-            -c {country} --key-size 4096 --key-file {dst}/{fqdn}/{fqdn}.key --csr-file {dst}{fqdn}/{fqdn}.csr'
+            -c {country} --key-size 4096 --key-file {dst}/{fqdn}/{fqdn}_test.key --csr-file {dst}{fqdn}/{fqdn}.csr'
 
 
 def windows_crt_renew(token, venafiURL, fqdn, id, dst, pfxpassword):
@@ -62,7 +62,7 @@ def restart_service(method):
     return f"sudo systemctl restart {method}.service"
 
 def full_chain_file(fqdn):
-    return  f"cat {fqdn}_test.crt IntelSHA256RootCA.crt > fullchain_test.crt"
+    return  f"cat {fqdn}_test.crt IntelSHA256RootCA_test.crt > fullchain_test.crt"
 
 
 def mov_to_opt(method,fqdn):
