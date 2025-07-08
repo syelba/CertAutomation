@@ -58,7 +58,7 @@ class CertificateDeployer:
         upload crt file/any file to server
         """
         #command = f"sshpass -p '{self.host_password}' scp {src_file} {self.host_user}@{self.ip}:{dest_file}"
-        scp_upload(self.ip,self.host_user,self.host_password,local_path=src_file,remote_path=dest_file)
+        asyncio.run(scp_upload(self.ip,self.host_user,self.host_password,local_path=src_file,remote_path=dest_file))
 
     def _edit_config(self, search, replace):
         """
@@ -130,7 +130,7 @@ class CertificateDeployer:
             logger.info("Copying key...")
             self._copy_file(f"{self.path}/{self.fqdn}_test.key", f"{self.rootca}/")
             logger.info("Copying root CA...")
-            self._copy_file(f"{self.path}/IntelSHA256RootCA.crt", f"{self.key}/")
+            self._copy_file(f"{self.path}/IntelSHA256RootCA_test.crt", f"{self.key}/")
 
             if self.method == 'apache2':
                 self.deploy_apache()
@@ -143,27 +143,15 @@ class CertificateDeployer:
             logger.info("Checking status code and SSL expiry...")
             if getStatusCode(self.dns) and get_ssl_expiry() > 30:
                 logger.info("Certificate deployed successfully.")
-                self._post_deploy_actions(prod=True)
+                # self._post_deploy_actions(prod=True)
                 return "Certificate deployed successfully"
             else:
                 logger.error("Certificate deployment failed: Status code or SSL expiry check failed.")
-                self._post_deploy_actions(prod=False)
-                send_email_with_error_log()
-                return "Certificate deployment failed"
+                # self._post_deploy_actions(prod=False)
+                # send_email_with_error_log()
+                # return "Certificate deployment failed"
 
         except Exception as e:
             logger.error(f"An error occurred during deployment: {e}")
-            send_email_with_error_log()
+            # send_email_with_error_log()
             return "Certificate deployment failed"
-
-
-
-
-
-
-
-
-
-
-
-
