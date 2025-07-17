@@ -9,7 +9,8 @@ import vcert_commends
 import os.path
 import asyncssh
 import asyncio
-
+import re
+import shlex
 
 # Configure Loguru logging
 log_filename = f"log_deploy_{datetime.now().strftime('%H-%M_%d-%m-%Y')}.log"
@@ -66,8 +67,9 @@ class CertificateDeployer:
         """
         command = f"sudo sed -i -e 's/{search}/{replace}/g' {self.conf_path}"
         #command = vcert_commends.
+        logger.info(command)
         return  self._run(command)
-        
+
 
     def restart_service(self):
         """
@@ -94,10 +96,10 @@ class CertificateDeployer:
         2. edit conf file and test the crt
         """ 
         logger.info("Deploying to Apache2...")
-        self._edit_config(f'{self.fqdn}_test.crt', f'{self.fqdn}.crt',self.conf_path)
-        self._edit_config(f'IntelSHA256RootCA_test.crt', f'IntelSHA256RootCA.crt',self.conf_path)
-        self._edit_config(f'{self.fqdn}_test.key', f'{self.fqdn}.key',self.conf_path)
-        self.restart_service('apache2')
+        self._edit_config(f'{self.fqdn}.crt', f'{self.fqdn}_test.crt')
+        self._edit_config(f'IntelSHA256RootCA.crt', f'IntelSHA256RootCA_test.crt')
+        self._edit_config(f'{self.fqdn}.key', f'{self.fqdn}_test.key')
+        self.restart_service()
 
 
     def deploy_nginx(self):
@@ -108,7 +110,7 @@ class CertificateDeployer:
         """ 
         logger.info("Creating fullchain certificate for Nginx...")
         cmd = vcert_commends.full_chain_file(self.fqdn)
-        res = self._run(cmd)
+        self._run(cmd)
         self._edit_config('fullchain_test.key', 'fullchain.key')
         self._edit_config(f'{self.fqdn}_test.key', f'{self.fqdn}.key')
         self.restart_service('nginx')
