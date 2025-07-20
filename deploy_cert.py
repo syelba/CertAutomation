@@ -43,10 +43,10 @@ class CertificateDeployer:
         self.path = os.getenv('dst') + fqdn
         if os.path.isdir(self.path):
             logger.info(f'path {self.path} is valid')
-            print(f'path {self.path} is valid')
+            #print(f'path {self.path} is valid')
         else:
             logger.error(f'the path {self.path} is not valid')
-            print(f'the path {self.path} is not valid')
+            #print(f'the path {self.path} is not valid')
 
     def _run(self, command):
         """
@@ -143,9 +143,9 @@ class CertificateDeployer:
 
             #move to opt/crt
             logger.info("Checking status code and SSL expiry...")
-            if getStatusCode(self.dns) and get_ssl_expiry() > 30:
+            if get_ssl_expiry() > 30 and getStatusCode(self.dns)==200:
                 logger.info("Certificate deployed successfully.")
-                # self._post_deploy_actions(prod=True)
+                self._post_deploy_actions(prod=True)
                 return "Certificate deployed successfully"
             else:
                 logger.error("Certificate deployment failed: Status code or SSL expiry check failed.")
@@ -157,3 +157,15 @@ class CertificateDeployer:
             logger.error(f"An error occurred during deployment: {e}")
             # send_email_with_error_log()
             return "Certificate deployment failed"
+
+
+
+
+
+
+
+
+
+
+
+                   
