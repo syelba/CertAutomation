@@ -103,7 +103,7 @@ def send_email_with_error_log(recipient_emails_str, subject, body, file_path,
 
 def getStatusCode(dns):
     PROXIS = {'http': '', 'https': ''}
-    request = requests.get(url=dns, verify=False, proxies=PROXIS)
+    request = requests.get(url='https://'+dns, verify=False, proxies=PROXIS)
     return request.status_code
 
 def get_current_time_with_date():
