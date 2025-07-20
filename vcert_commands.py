@@ -30,31 +30,24 @@ def pickup_apache_nginx(token, venafiURL, fqdn, id, dst):
     return f'sudo vcert pickup -u {venafiURL} -t {token} --pickup-id "{id}" ' \
            f'--cert-file {dst}{fqdn}/{fqdn}.crt --chain-file {dst}{fqdn}/IntelSHA256RootCA.crt'
 
-
+#pass
 def edit_conf_crt(fqdn,conf_file,prod = False):
     test = '_test'
     if prod:
-        return f"sudo sed -i -e 's/{fqdn}.crt/{fqdn}{test}.crt/g' {conf_file}"
-    else:
-        return f"sudo sed -i -e 's/{fqdn}{test}.crt/{fqdn}.crt/g' {conf_file} && sudo mv {fqdn}{test}.crt {fqdn}.crt"
+        return f"sudo rm {fqdn}.crt && sudo mv {fqdn}{test}.crt {fqdn}.crt && sudo sed -i -e 's/{fqdn}{test}.crt/{fqdn}.crt/g' {conf_file}"
     
-
-
-def edit_conf_ca(ip,host_user,host_password,conf_file,prod = False):
+#pass
+def edit_conf_ca(conf_file,prod = False):
     test = '_test'
     if prod:
-        return f"sshpass -p '{host_password}' ssh {host_user}@{ip} sudo sed -i -e 's/IntelSHA256RootCA.crt/IntelSHA256RootCA{test}.crt/g' {conf_file}"
-    else:
-        return f"sshpass -p '{host_password}' ssh {host_user}@{ip} sudo sed -i -e 's/IntelSHA256RootCA{test}.crt/IntelSHA256RootCA.crt/g' {conf_file} \
-            && sudo mv IntelSHA256RootCA{test}.crt IntelSHA256RootCA.crt"
+        return f"sudo rm IntelSHA256RootCA.crt && sudo mv IntelSHA256RootCA{test}.crt IntelSHA256RootCA.crt && \
+        sudo sed -i -e 's/IntelSHA256RootCA{test}.crt/IntelSHA256RootCA.crt/g' {conf_file}"
 
 
-def edit_conf_key(ip,host_user,host_password,fqdn,conf_file,prod = False):
+def edit_conf_key(fqdn,conf_file,prod = False):
     test = '_test'
     if prod:
-        return f"sudo sed -i -e 's/{fqdn}.key/{fqdn}{test}.key/g' {conf_file}"
-    else:
-        return f"sudo sed -i -e 's/{fqdn}{test}.key/{fqdn}.key/g' {conf_file} && sudo mv {fqdn}{test}.key {fqdn}.key"
+        return f"sudo rm {fqdn}.crt && sudo mv {fqdn}{test}.crt && sudo sed -i -e 's/{fqdn}{test}.key/{fqdn}.key/g' {conf_file}"
     
 
 
