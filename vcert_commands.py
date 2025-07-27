@@ -31,31 +31,37 @@ def pickup_apache_nginx(token, venafiURL, fqdn, id, dst):
            f'--cert-file {dst}{fqdn}/{fqdn}.crt --chain-file {dst}{fqdn}/IntelSHA256RootCA.crt'
 
 #pass
-def edit_conf_crt(fqdn,conf_file,prod = False):
+def edit_conf_crt(fqdn,target_path,conf_file,prod = False):
     test = '_test'
     if prod:
-        return f"sudo rm {fqdn}.crt && sudo mv {fqdn}{test}.crt {fqdn}.crt && sudo sed -i -e 's/{fqdn}{test}.crt/{fqdn}.crt/g' {conf_file}"
+        return f"sudo rm {target_path}{fqdn}.crt && sudo mv {target_path}{fqdn}{test}.crt {target_path}{fqdn}.crt && \
+        sudo sed -i -e 's/{fqdn}{test}.crt/{fqdn}.crt/g' {conf_file}"
     
 #pass
-def edit_conf_ca(conf_file,prod = False):
+def edit_conf_ca(conf_file,target_path,prod = False):
     test = '_test'
     if prod:
-        return f"sudo rm IntelSHA256RootCA.crt && sudo mv IntelSHA256RootCA{test}.crt IntelSHA256RootCA.crt && \
+        return f"sudo rm {target_path}IntelSHA256RootCA.crt && sudo mv {target_path}IntelSHA256RootCA{test}.crt {target_path}IntelSHA256RootCA.crt && \
         sudo sed -i -e 's/IntelSHA256RootCA{test}.crt/IntelSHA256RootCA.crt/g' {conf_file}"
 
 
-def edit_conf_key(fqdn,conf_file,prod = False):
+def edit_conf_key(fqdn,target_path,conf_file,prod = False):
     test = '_test'
     if prod:
-        return f"sudo rm {fqdn}.crt && sudo mv {fqdn}{test}.crt && sudo sed -i -e 's/{fqdn}{test}.key/{fqdn}.key/g' {conf_file}"
+        return f"sudo rm {target_path}{fqdn}.crt && sudo mv {target_path}{fqdn}{test}.crt && sudo sed -i -e 's/{fqdn}{test}.key/{fqdn}.key/g' {conf_file}"
     
 
 
 def restart_service(method):
     return f"sudo systemctl restart {method}.service"
 
-def full_chain_file(fqdn):
-    return  f"cat {fqdn}_test.crt IntelSHA256RootCA_test.crt > fullchain_test.crt"
+def full_chain_file(fqdn,target_path):
+    return  f"cat {target_path}{fqdn}_test.crt {target_path}IntelSHA256RootCA_test.crt > {target_path}fullchain_test.crt"
+
+def full_chain_file_to_prod(fqdn,target_path,conf_file):
+    return  f"sudo mv {target_path}/fullchain_test.crt {target_path}/fullchain.crt && sudo sed -i -e 's/fullchain_test.crt/fullchain.crt/g' {conf_file} &&" \
+        f"sudo mv {target_path}/{fqdn}_test.key {target_path}/{fqdn}.key && sudo sed -i -e 's/{fqdn}_test.key/{fqdn}.key/g' {conf_file}"
+
 
 
 def mov_to_opt(method,fqdn):
