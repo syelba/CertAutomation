@@ -79,14 +79,22 @@ class CertificateDeployer:
         res = asyncio.run(execute_command(hostname=self.ip,username=self.host_user,password=self.host_password,command=build_commend))
         return res
 
-    def _post_deploy_actions(self, prod):
-        rename_cert = vcert_commends.edit_conf_crt(prod=prod)
-        rename_ca = vcert_commends.edit_conf_key(prod=prod)
-        rename_key = vcert_commends.edit_conf_ca(prod=prod)
-        self._run(rename_cert)
-        self._run(rename_ca)
-        self._run(rename_key)
-        self.restart_service("apache2" if self.method == "apache2" else "nginx")
+    def _post_deploy_actions(self, prod=False):
+        if self.method == "nginx":
+            rename_full_chain =vcert_commends.full_chain_file_to_prod(fqdn=self.fqdn,target_path=self.crt,conf_file=self.conf_path)
+            self._run(rename_full_chain)
+            self.restart_service()
+        elif self.method == "apache2":
+            rename_cert = vcert_commends.edit_conf_crt(fqdn=self.fqdn,target_path=self.crt,conf_file=self.conf_path,prod=prod)
+            rename_ca = vcert_commends.edit_conf_key(fqdn=self.fqdn,target_path=self.crt,conf_file=self.conf_path,prod=prod)
+            rename_key = vcert_commends.edit_conf_ca(fqdn=self.fqdn,target_path=self.crt,conf_file=self.conf_path,prod=prod)
+            self._run(rename_cert)
+            self._run(rename_ca)
+            self._run(rename_key)
+            self.restart_service("apache2" if self.method == "apache2" else "nginx")
+        else:
+            logger.error(f"deploy method dont fit:{self.method}")
+            return f"deploy method dont fit:{self.method}"
 
 
     def deploy_apache(self):
@@ -109,11 +117,12 @@ class CertificateDeployer:
         2. edit conf file and test the crt
         """ 
         logger.info("Creating fullchain certificate for Nginx...")
-        cmd = vcert_commends.full_chain_file(self.fqdn)
+        cmd = vcert_commends.full_chain_file(self.fqdn,self.crt)
         self._run(cmd)
-        self._edit_config('fullchain_test.key', 'fullchain.key')
-        self._edit_config(f'{self.fqdn}_test.key', f'{self.fqdn}.key')
-        self.restart_service('nginx')
+        logger.info(f"creating new crt file {cmd}")
+        self._edit_config('fullchain.crt', 'fullchain_test.crt')
+        self._edit_config(f'{self.fqdn}.key', f'{self.fqdn}_test.key')
+        #self.restart_service('nginx')
 ######################################################################################################################################################################
     def deploy(self):
         """
@@ -143,7 +152,7 @@ class CertificateDeployer:
 
             #move to opt/crt
             logger.info("Checking status code and SSL expiry...")
-            if get_ssl_expiry() > 30 and getStatusCode(self.dns)==200:
+            if get_ssl_expiry(self.dns) > 30 and getStatusCode(self.dns)==200:
                 logger.info("Certificate deployed successfully.")
                 self._post_deploy_actions(prod=True)
                 return "Certificate deployed successfully"
@@ -157,15 +166,3 @@ class CertificateDeployer:
             logger.error(f"An error occurred during deployment: {e}")
             # send_email_with_error_log()
             return "Certificate deployment failed"
-
-
-
-
-
-
-
-
-
-
-
-                   
