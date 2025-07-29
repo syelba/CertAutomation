@@ -48,7 +48,7 @@ def edit_conf_ca(conf_file,target_path,prod = False):
 def edit_conf_key(fqdn,target_path,conf_file,prod = False):
     test = '_test'
     if prod:
-        return f"sudo rm {target_path}{fqdn}.crt && sudo mv {target_path}{fqdn}{test}.crt && sudo sed -i -e 's/{fqdn}{test}.key/{fqdn}.key/g' {conf_file}"
+        return f"sudo rm {target_path}{fqdn}.key && sudo mv {target_path}{fqdn}{test}.key {target_path}{fqdn}.key && sudo sed -i -e 's/{fqdn}{test}.key/{fqdn}.key/g' {conf_file}"
     
 
 
