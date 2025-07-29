@@ -87,11 +87,12 @@ class CertificateDeployer:
         elif self.method == "apache2":
             rename_cert = vcert_commends.edit_conf_crt(fqdn=self.fqdn,target_path=self.crt,conf_file=self.conf_path,prod=prod)
             rename_ca = vcert_commends.edit_conf_key(fqdn=self.fqdn,target_path=self.crt,conf_file=self.conf_path,prod=prod)
-            rename_key = vcert_commends.edit_conf_ca(fqdn=self.fqdn,target_path=self.crt,conf_file=self.conf_path,prod=prod)
+            rename_key = vcert_commends.edit_conf_ca(target_path=self.crt,conf_file=self.conf_path,prod=prod)
             self._run(rename_cert)
             self._run(rename_ca)
             self._run(rename_key)
-            self.restart_service("apache2" if self.method == "apache2" else "nginx")
+            self.restart_service()
+            
         else:
             logger.error(f"deploy method dont fit:{self.method}")
             return f"deploy method dont fit:{self.method}"
@@ -122,7 +123,7 @@ class CertificateDeployer:
         logger.info(f"creating new crt file {cmd}")
         self._edit_config('fullchain.crt', 'fullchain_test.crt')
         self._edit_config(f'{self.fqdn}.key', f'{self.fqdn}_test.key')
-        #self.restart_service('nginx')
+        self.restart_service()
 ######################################################################################################################################################################
     def deploy(self):
         """
