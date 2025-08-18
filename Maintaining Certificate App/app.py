@@ -1,9 +1,34 @@
-from flask import Flask, request, jsonify, send_from_directory, redirect, url_for, session, render_template
+from flask import Flask, request, jsonify, send_from_directory, redirect, url_for, session, render_template, flash
 from pymongo import MongoClient
 from bson import ObjectId
 from dotenv import load_dotenv
 import os
 from functools import wraps
+import bcrypt
+from bson.binary import Binary
+import subprocess
+
+
+
+def get_ssl_expiry(domain, port=443):
+    cmd = f"""
+    data=$(echo | openssl s_client -servername {domain} -connect {domain}:{port} 2>/dev/null | openssl x509 -noout -enddate | sed -e 's#notAfter=##')
+    ssldate=$(date -d \"${{data}}\" '+%s')
+    nowdate=$(date '+%s')
+    diff=$((ssldate - nowdate))
+    echo $((diff / 86400))
+    """
+    try:
+        result = subprocess.run(cmd, shell=True, text=True, capture_output=True)
+        if result.returncode == 0:
+            return int(result.stdout.strip())
+        else:
+            return -1
+    except Exception as e:
+        return -1
+
+
+
 
 # Load environment variables
 load_dotenv()
@@ -25,19 +50,45 @@ client = MongoClient(f"mongodb://{os.getenv('DBuser')}:{os.getenv('DBpassword')}
 db = client[os.getenv('DBname')]
 collection = db[os.getenv('CollectionName')]
 
-# Login page route
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
 
-        if username == os.getenv("flask_USERNAME") and password == os.getenv("flask_PASSWORD"):
-            session['logged_in'] = True
-            return redirect(url_for('index'))
+# User/Auth DB (local)
+auth_client = MongoClient("mongodb://localhost:27017/")
+auth_db = auth_client["hash_vault"]
+auth_users = auth_db["users"]
+
+
+def check_password(username, input_password):
+    user = auth_users.find_one({"username": username})
+    if not user:
+        return False
+
+    stored_hash = user["password"]
+    if isinstance(stored_hash, Binary):
+        stored_hash = bytes(stored_hash)
+
+    return bcrypt.checkpw(input_password.encode(), stored_hash)
+
+
+
+# Login route
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+
+        if check_password(username, password):
+            session["username"] = username
+            session["logged_in"] = True
+            flash("Login successful")
+            return redirect(url_for("index"))
         else:
-            return render_template("login.html", error="Invalid username or password")
+            flash("Invalid username or password")
+            return render_template("login.html",error="Invalid username or password")
+
     return render_template("login.html")
+
+
 
 # Login required decorator
 def login_required(f):
@@ -48,10 +99,14 @@ def login_required(f):
         return f(*args, **kwargs)
     return wrapper
 
+
+
+
+
 @app.route('/')
 @login_required
 def index():
-    return send_from_directory('.', 'index.html')
+    return send_from_directory('.', 'index2.html')
 
 @app.route('/search', methods=['GET'])
 @login_required
@@ -156,6 +211,35 @@ def list_certificates():
         if "host_password" in result:
             result["host_password"] = "******"
     return jsonify(results)
+
+
+
+# New route for the Certificate Status page
+@app.route('/certificate_status_page')
+@login_required
+def certificate_status_page():
+    return send_from_directory('.', 'status.html')
+
+# New API endpoint to get certificate status and expiry
+@app.route('/certificate_status', methods=['GET'])
+@login_required
+def certificate_status():
+    results = list(collection.find({}, {"dns": 1}))
+    certificate_data = []
+    
+    for cert in results:
+        dns = cert.get("dns")
+        if dns:
+            days_left = get_ssl_expiry(dns)
+            certificate_data.append({
+                "dns": dns,
+                "days_left": days_left
+            })
+    
+    return jsonify(certificate_data)
+
+
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5555)
