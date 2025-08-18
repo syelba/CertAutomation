@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Certificate Status</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f0f8ff;
+      margin: 0;
+      padding: 0;
+      color: #333;
+    }
+    .container {
+      max-width: 800px;
+      margin: 30px auto;
+      background-color: #ffffff;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 5px 20px rgba(0, 0, 100, 0.1);
+    }
+    h2 {
+      color: #0066cc;
+      border-bottom: 2px solid #e0e0e0;
+      padding-bottom: 5px;
+      margin-top: 30px;
+    }
+    
+    /* --- Table Styling --- */
+    #status-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+    #status-table th, #status-table td {
+      padding: 12px 15px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    #status-table thead th {
+      background-color: #0066cc;
+      color: white;
+      text-transform: uppercase;
+      font-size: 0.9rem;
+    }
+    #status-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+    #status-table tbody tr:hover {
+      background-color: #f0f8ff;
+    }
+    
+    /* --- Status Colors --- */
+    .expired {
+        background-color: #ffcccc; /* Red for expired */
+    }
+    .warning {
+        background-color: #fffacd; /* Yellow for warning */
+    }
+    .ok {
+        background-color: #d1ffde; /* Green for OK */
+    }
+    
+    /* --- Navigation Bar Styles --- */
+    .topnav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background-color: #333;
+      padding: 0 20px;
+      overflow: hidden;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+    .topnav a {
+      color: white;
+      text-align: center;
+      padding: 14px 16px;
+      text-decoration: none;
+      font-size: 17px;
+      transition: background-color 0.3s, color 0.3s;
+    }
+    .topnav a:hover {
+      background-color: #575757;
+      color: white;
+    }
+    .topnav a.active {
+      background-color: #0066cc;
+      color: white;
+    }
+    .topnav-left {
+      display: flex;
+      align-items: center;
+    }
+    .topnav-right {
+      display: flex;
+      align-items: center;
+      padding-right: 20px;
+    }
+    .fixed-topnav {
+      position: fixed;
+      top: 0;
+      width: 100%;
+      z-index: 1000;
+      background-color: #333;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+    body {
+      padding-top: 50px;
+    }
+    .status-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .status-info {
+        font-size: 0.9em;
+        color: #666;
+        text-align: right;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="fixed-topnav topnav">
+    <div class="topnav-left">
+      <a href="index2.html">Home</a>
+      <a href="index2.html#search">Search</a>
+      <a href="index2.html#add">Add</a>
+      <a href="index2.html#update">Update</a>
+      <a href="index2.html#delete">Delete</a>
+      <a href="index2.html#list">List All</a>
+    </div>
+    <div class="topnav-right">
+      <a href="login.html">Logout</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="status-header">
+      <h1 style="color: #004d99; margin: 0;">Certificate Status</h1>
+      <div class="status-info">
+        Last updated: <span id="last-updated">Never</span>
+      </div>
+    </div>
+    
+    <div id="status-container">
+      <p style="text-align: center;">Loading certificate status...</p>
+      <table id="status-table">
+        <thead>
+          <tr>
+            <th>DNS Name</th>
+            <th>Days Left</th>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    let lastRefreshTime = null;
+    const REFRESH_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
+
+    function updateLastUpdatedTime() {
+      const now = new Date();
+      document.getElementById('last-updated').textContent = now.toLocaleTimeString();
+    }
+
+    async function fetchCertificateStatus(isManualRefresh = false) {
+      const statusTableBody = document.querySelector('#status-table tbody');
+      const statusContainer = document.getElementById('status-container');
+      
+      const currentTime = new Date().getTime();
+      if (lastRefreshTime && (currentTime - lastRefreshTime < REFRESH_INTERVAL) && !isManualRefresh) {
+          return;
+      }
+
+      statusContainer.innerHTML = '<p style="text-align: center;">Loading certificate status...</p>';
+      
+      try {
+        const response = await fetch('/certificate_status');
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        const certificates = await response.json();
+
+        statusContainer.innerHTML = '';
+        const table = document.createElement('table');
+        table.id = 'status-table';
+        table.innerHTML = `
+          <thead>
+            <tr>
+              <th>DNS Name</th>
+              <th>Days Left</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        `;
+        statusContainer.appendChild(table);
+
+        const newTableBody = table.querySelector('tbody');
+
+        if (certificates.length === 0) {
+          statusContainer.innerHTML = '<p style="text-align: center;">No certificates found.</p>';
+          return;
+        }
+
+        certificates.forEach(cert => {
+          const row = document.createElement('tr');
+          
+          let statusClass = '';
+          if (cert.days_left < 0) {
+            statusClass = 'expired';
+          } else if (cert.days_left <= 30) {
+            statusClass = 'warning';
+          } else {
+            statusClass = 'ok';
+          }
+          row.classList.add(statusClass);
+
+          const dnsCell = document.createElement('td');
+          dnsCell.textContent = cert.dns;
+
+          const daysLeftCell = document.createElement('td');
+          daysLeftCell.textContent = `${cert.days_left} days left`;
+          
+          row.appendChild(dnsCell);
+          row.appendChild(daysLeftCell);
+          newTableBody.appendChild(row);
+        });
+
+        lastRefreshTime = currentTime;
+        updateLastUpdatedTime();
+
+      } catch (error) {
+        statusContainer.innerHTML = `<p style="text-align: center; color: red;">Error: Failed to load certificate status.</p>`;
+        console.error('Fetch error:', error);
+      }
+    }
+    
+    document.addEventListener('DOMContentLoaded', () => {
+        fetchCertificateStatus();
+        setInterval(() => fetchCertificateStatus(), REFRESH_INTERVAL);
+    });
+  </script>
+</body>
+</html>
