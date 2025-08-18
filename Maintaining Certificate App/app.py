@@ -7,7 +7,8 @@ from functools import wraps
 import bcrypt
 from bson.binary import Binary
 import subprocess
-
+from flask import Flask, redirect, url_for
+from flask_login import logout_user, login_required
 
 
 def get_ssl_expiry(domain, port=443):
@@ -89,7 +90,6 @@ def login():
     return render_template("login.html")
 
 
-
 # Login required decorator
 def login_required(f):
     @wraps(f)
@@ -100,6 +100,12 @@ def login_required(f):
     return wrapper
 
 
+@app.route("/logout")
+@login_required  # Your custom session-based decorator
+def logout():
+    session.pop("username", None)
+    session.pop("logged_in", None)
+    return redirect("/login")  # Or redirect(url_for("login"))
 
 
 
