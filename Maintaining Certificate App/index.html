@@ -56,21 +56,86 @@
     }
     .form-section {
       margin-bottom: 20px;
+      scroll-margin-top: 50px; 
+    }
+
+    /* --- Navigation Bar Styles --- */
+    .topnav {
+      display: flex;
+      justify-content: flex-start; /* Aligns items to the start (left) */
+      align-items: center;
+      background-color: #333;
+      padding: 0 20px;
+      overflow: hidden;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+    .topnav a {
+      color: white;
+      text-align: center;
+      padding: 14px 16px;
+      text-decoration: none;
+      font-size: 17px;
+      transition: background-color 0.3s, color 0.3s;
+    }
+    .topnav a:hover {
+      background-color: #575757;
+      color: white;
+    }
+    .topnav a.active {
+      background-color: #0066cc;
+      color: white;
+    }
+    .topnav-left {
+      display: flex;
+      align-items: center;
+    }
+    /* --- Fixed Navbar Styles --- */
+    .fixed-topnav {
+      position: fixed;
+      top: 0;
+      width: 100%;
+      z-index: 1000;
+      background-color: #333;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+    body {
+      padding-top: 50px;
+    }
+    /* --- Styles for Logout Link on the right --- */
+    .logout-container {
+        position: absolute;
+        right: 20px;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1 style="text-align: center; color: #004d99;">Certificate Manager</h1>
 
-    <div class="form-section">
+  <div class="fixed-topnav topnav">
+    <div class="topnav-left">
+      <a href="index2.html">Home</a>
+      <a href="index2.html#search">Search</a>
+      <a href="index2.html#add">Add</a>
+      <a href="index2.html#update">Update</a>
+      <a href="index2.html#delete">Delete</a>
+      <a href="index2.html#list">List All</a>
+      <a href="status.html">Certificate status</a>
+    </div>
+    <div class="logout-container">
+        <a href="{{ url_for('logout') }}">Logout</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <h1 id="home" style="text-align: center; color: #004d99;">Certificate Manager</h1>
+
+    <div class="form-section" id="search">
       <h2>🔍 Search Certificate</h2>
       <input type="text" id="search_dns" placeholder="Enter DNS">
       <button onclick="searchCertificate()">Search</button>
       <pre id="search_result"></pre>
     </div>
 
-    <div class="form-section">
+    <div class="form-section" id="add">
       <h2>➕ Add Certificate</h2>
       <div id="add_form">
         <input type="text" name="fqdn" placeholder="FQDN">
@@ -92,7 +157,7 @@
       </div>
     </div>
 
-    <div class="form-section">
+    <div class="form-section" id="update">
       <h2>✏️ Update Certificate</h2>
       <div id="update_form">
         <input type="text" name="id" placeholder="Object ID (Required)">
@@ -115,14 +180,14 @@
       </div>
     </div>
 
-    <div class="form-section">
+    <div class="form-section" id="delete">
       <h2>🗑️ Delete Certificate</h2>
       <input type="text" id="delete_id" placeholder="Object ID">
       <input type="password" id="delete_password" placeholder="Admin Password">
       <button onclick="deleteCertificate()">Delete</button>
     </div>
 
-    <div class="form-section">
+    <div class="form-section" id="list">
       <h2>📋 List All Certificates</h2>
       <button onclick="listCertificates()">List</button>
       <pre id="list_result"></pre>
